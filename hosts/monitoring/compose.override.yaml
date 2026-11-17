@@ -1,0 +1,35 @@
+# Monitoring 레포의 compose.yaml + compose.prod.yaml 위에 겹치는 운영 전용 설정입니다.
+# 레포 파일은 고치지 않고, 데이터 위치·고정 수집 대상·Kafka exporter만 바꿉니다. 상대 경로는 레포 기준이라 절대 경로를 씁니다.
+services:
+  prometheus:
+    volumes:
+      # 레포의 빈 targets 목록 대신 start.sh가 만든 사설 주소 목록을 씁니다. 파일이 바뀌면 자동으로 다시 읽습니다.
+      - /opt/stockdrop/monitoring/targets:/etc/prometheus/targets:ro
+      # Docker 볼륨 대신 EBS(/data)에 둬서 EC2를 교체해도 지표가 남습니다.
+      - /data/prometheus:/prometheus
+  grafana:
+    volumes:
+      - /data/grafana:/var/lib/grafana
+  alertmanager:
+    volumes:
+      - /data/alertmanager:/alertmanager
+
+  # 소비 그룹 lag를 읽습니다. 브로커에 사설 주소로 접속하며 메시지를 쓰지 않습니다.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.9.0
+    restart: unless-stopped
+    command:
+      - --kafka.server=${KAFKA_BOOTSTRAP:?Kafka private address required}
+      - --kafka.version=3.9.0
+      - --group.filter=.*
+      - '--topic.filter=stockdrop\..*'
+      - --offset.show-all
+    networks: [monitoring]
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command: [--path.rootfs=/host, --web.listen-address=:9100]
+    volumes: ['/:/host:ro,rslave']

@@ -1,0 +1,91 @@
+#!/bin/bash
+# 서비스 EC2 부팅 스크립트입니다. 순서: Docker·Compose 준비 → (일반 풀) Eureka ENI 연결 → node exporter → 서비스 배포
+# → 준비 확인 → 시작 lifecycle hook 완료. 비밀값은 여기 없고 stockdrop-deploy가 실행 중 SSM에서 읽습니다.
+# 다시 실행해도 안전합니다. 데이터는 서버에 두지 않으므로 초기화할 것이 없습니다.
+set -euo pipefail
+exec > >(tee -a /var/log/stockdrop-bootstrap.log) 2>&1
+
+dnf install -y -q docker
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-aarch64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+mkdir -p /etc/stockdrop
+chmod 700 /etc/stockdrop
+cat > /etc/stockdrop/pool.conf <<'CONF'
+REGION="${region}"
+PARAM_PATH="${parameter_path}"
+REGISTRY="${registry}"
+REPO_PREFIX="${repo_prefix}"
+SERVICES="${services}"
+EUREKA_IPS="${eureka_ips}"
+EUREKA_HOSTS="${eureka_hosts}"
+KAFKA_BOOTSTRAP_SERVERS="${kafka_bootstrap_servers}"
+ASG_NAME="${asg_name}"
+GATEWAY_NAME="${gateway_name}"
+GATEWAY_PORT="${gateway_port}"
+CONF
+
+cat > /usr/local/bin/stockdrop-deploy <<'SCRIPT'
+${deploy_script}
+SCRIPT
+cat > /usr/local/bin/stockdrop-lifecycle <<'SCRIPT'
+${lifecycle_script}
+SCRIPT
+chmod 700 /usr/local/bin/stockdrop-deploy /usr/local/bin/stockdrop-lifecycle
+
+%{ if eureka_enis != "" ~}
+TOKEN=$(curl -sfX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+INSTANCE_ID=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+AZ=$(curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)
+
+# 자기 AZ의 Eureka 고정 ENI를 붙입니다. 서버 교체 중이면 이전 서버가 놓을 때까지 최대 3분만 기다리고,
+# 그래도 비어 있지 않으면(증설 서버) Eureka 없이 나머지 서비스만 띄웁니다.
+rm -f /etc/stockdrop/eureka-ip
+for entry in ${eureka_enis}; do
+  IFS=: read -r eni eni_az eni_ip <<< "$entry"
+  [ "$eni_az" = "$AZ" ] || continue
+  for _ in $(seq 1 18); do
+    if aws ec2 attach-network-interface --region "${region}" --network-interface-id "$eni" \
+      --instance-id "$INSTANCE_ID" --device-index 1 >/dev/null 2>&1; then
+      # Amazon Linux 2023 네트워크 도구가 두 번째 카드에 주소와 경로를 설정할 때까지 기다립니다.
+      for _ in $(seq 1 36); do ip -4 addr | grep -q "$eni_ip/" && break; sleep 5; done
+      ip -4 addr | grep -q "$eni_ip/" && echo "$eni_ip" > /etc/stockdrop/eureka-ip
+      break
+    fi
+    sleep 10
+  done
+done
+[ -f /etc/stockdrop/eureka-ip ] && echo "Eureka 주소: $(cat /etc/stockdrop/eureka-ip)" || echo "Eureka ENI 없음: Eureka를 띄우지 않습니다."
+%{ endif ~}
+
+# Prometheus가 수집하는 서버 지표입니다.
+docker rm -f node-exporter >/dev/null 2>&1 || true
+docker run -d --name node-exporter --restart unless-stopped --network host --pid host \
+  --log-opt max-size=10m --log-opt max-file=3 \
+  -v /:/host:ro,rslave quay.io/prometheus/node-exporter:${node_exporter_version} --path.rootfs=/host
+
+# 종료 lifecycle hook을 감시하는 서비스입니다. 재부팅해도 다시 시작됩니다.
+cat > /etc/systemd/system/stockdrop-lifecycle.service <<'UNIT'
+[Unit]
+Description=STOCKDROP ASG termination watcher
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/usr/local/bin/stockdrop-lifecycle watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now stockdrop-lifecycle.service
+
+# 배포가 일부 실패해도 서버는 살려 두고 원인을 로그로 남깁니다. 시작 hook은 아래에서 결과에 맞게 완료합니다.
+deploy_ok=1
+/usr/local/bin/stockdrop-deploy || deploy_ok=0
+/usr/local/bin/stockdrop-lifecycle launched "$deploy_ok"

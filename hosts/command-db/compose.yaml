@@ -1,0 +1,66 @@
+# 운영 Command DB EC2(command-db.stockdrop.internal)입니다. 구매 풀의 ProductCommand·OrderCommand만 쓰며 일반 RDS와 분리합니다.
+# 데이터는 별도 EBS(/data/postgres)에 남습니다. 비밀번호는 init.sh가 SSM에서 읽어 ./secrets에 둡니다.
+name: stockdrop-command-db
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: stockdrop-command-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: command_admin
+      # 최초 초기화 때만 읽습니다. 이후 관리자 비밀번호를 바꾸려면 ALTER ROLE로 따로 바꿉니다.
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin-password
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: UTC
+    # t4g.small(2GB) 기준입니다. 구매 풀 2대 x 서비스 2개의 커넥션 풀 합계보다 여유 있게 둡니다.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - max_connections=150
+      - -c
+      - log_min_duration_statement=500
+    # 보안 그룹이 구매 풀과 모니터링 EC2에서 오는 5432만 허용합니다.
+    ports: ["5432:5432"]
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+      - ./secrets/admin-password:/run/secrets/admin-password:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U command_admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+    stop_grace_period: 60s
+
+  # 서비스 계정을 재사용하지 않고 pg_monitor 권한만 가진 metrics 계정으로 읽습니다.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_USER: metrics
+      DATA_SOURCE_PASS_FILE: /run/secrets/metrics-password
+    ports: ["${PRIVATE_IP:?private IP required}:9187:9187"]
+    volumes:
+      - ./secrets/metrics-password:/run/secrets/metrics-password:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command: [--path.rootfs=/host, --web.listen-address=:9100]
+    volumes: ['/:/host:ro,rslave']

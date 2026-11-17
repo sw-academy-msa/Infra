@@ -1,0 +1,24 @@
+# Monitoring 레포 exporters/kafka-jmx.yml과 같은 규칙입니다. 그쪽을 바꾸면 함께 바꿉니다.
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+rules:
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=MessagesInPerSec><>Count'
+    name: kafka_server_brokertopicmetrics_messagesin_total
+    type: COUNTER
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=BytesInPerSec><>Count'
+    name: kafka_server_brokertopicmetrics_bytesin_total
+    type: COUNTER
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=BytesOutPerSec><>Count'
+    name: kafka_server_brokertopicmetrics_bytesout_total
+    type: COUNTER
+  - pattern: 'kafka.server<type=ReplicaManager, name=UnderReplicatedPartitions><>Value'
+    name: kafka_server_replicamanager_underreplicatedpartitions
+    type: GAUGE
+  - pattern: 'kafka.controller<type=KafkaController, name=ActiveControllerCount><>Value'
+    name: kafka_controller_active_controller_count
+    type: GAUGE
+  - pattern: 'kafka.network<type=RequestMetrics, name=TotalTimeMs, request=(.+)><>Mean'
+    name: kafka_network_request_total_time_ms
+    labels:
+      request: '$1'
+    type: GAUGE

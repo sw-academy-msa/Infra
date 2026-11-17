@@ -1,0 +1,63 @@
+# 운영 Kafka EC2(kafka.stockdrop.internal)의 단일 KRaft 브로커입니다. 복제본이 1개라 브로커 장애 시 Kafka가 멈추며,
+# 데이터는 별도 EBS(/data/kafka)에 남습니다. 서비스 설정이 토픽 자동 생성을 끄므로 topics.sh로 미리 만듭니다.
+name: stockdrop-kafka
+services:
+  kafka:
+    image: apache/kafka:4.1.0
+    container_name: stockdrop-kafka
+    # 광고 주소(내부 DNS)와 같은 경로로 접속되도록 호스트 네트워크를 씁니다. 외부 노출은 보안 그룹이 막습니다.
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      # 재생성해도 같은 클러스터로 인식되도록 ID를 고정합니다. 비밀값이 아닙니다.
+      CLUSTER_ID: c3RvY2tkcm9wLXByb2Qtaw
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # 컨트롤러는 같은 서버 안에서만 쓰므로 루프백에만 엽니다. 9093은 보안 그룹에도 없습니다.
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://127.0.0.1:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_HOST:?Kafka internal DNS name required}:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 오타난 토픽 이름이 조용히 만들어지지 않도록 막습니다. 새 토픽은 topics.sh에 추가합니다.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # 로컬과 같이 3 MiB 상품 값에 여유를 더한 4 MiB까지 받습니다.
+      KAFKA_MESSAGE_MAX_BYTES: 4194304
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 4194304
+      # 기본 보존은 7일입니다. 20GB 디스크가 차지 않도록 파티션당 2GB에서도 지웁니다.
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 2147483648
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # t4g.small(2GB)에서 OS 페이지 캐시를 남기도록 힙을 512MB로 제한합니다.
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+      # 브로커 지표를 9404로 노출합니다. 보안 그룹은 모니터링 EC2에서만 허용합니다.
+      # 이 값은 컨테이너의 모든 Java 도구에 적용되므로 CLI·healthcheck에서는 KAFKA_OPTS를 비웁니다.
+      KAFKA_OPTS: -javaagent:/opt/monitoring/jmx_prometheus_javaagent.jar=9404:/opt/monitoring/kafka-jmx.yml
+    volumes:
+      - /data/kafka:/var/lib/kafka/data
+      - ./jmx_prometheus_javaagent.jar:/opt/monitoring/jmx_prometheus_javaagent.jar:ro
+      - ./kafka-jmx.yml:/opt/monitoring/kafka-jmx.yml:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "KAFKA_OPTS= /opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 30s
+    stop_grace_period: 60s
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command: [--path.rootfs=/host, --web.listen-address=:9100]
+    volumes: ['/:/host:ro,rslave']

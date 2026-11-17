@@ -1,0 +1,18 @@
+# Terraform 실행 산출물과 실제 값이 들어가는 파일은 커밋하지 않습니다.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+
+# hosts/: 서버에서 내려받거나 SSM에서 만드는 파일입니다. 로컬 테스트 중 생겨도 올리지 않습니다.
+hosts/**/*.jar
+hosts/**/*.download
+hosts/**/secrets/
+hosts/**/targets/
+hosts/**/repo/
+modules/kafka_restart/build/

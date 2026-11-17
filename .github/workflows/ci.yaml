@@ -1,0 +1,52 @@
+# AWS 자격 증명 없이 형식·문법·요구사항·스크립트를 검사합니다. plan/apply는 실행하지 않습니다.
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
+      - name: Check format
+        run: terraform fmt -recursive -check
+      - name: Validate
+        run: |
+          for dir in bootstrap envs/prod; do
+            terraform -chdir=$dir init -backend=false -input=false
+            terraform -chdir=$dir validate
+          done
+      # mock provider로 plan·apply를 흉내 내 요구사항(EC2 수, 격리, Multi-AZ 등)을 확인합니다. AWS에 접속하지 않습니다.
+      - name: Test
+        run: terraform -chdir=envs/prod test
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.53.0
+      - name: Lint
+        run: tflint --recursive --format compact
+
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: |
+          find hosts modules -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find hosts modules -name '*.sh' -print0 | xargs -0 shellcheck -S warning
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Lambda unit tests
+        run: python -m unittest discover -s modules/kafka_restart/lambda -v
+      - name: Compose files
+        run: |
+          KAFKA_ADVERTISED_HOST=kafka.test docker compose -f hosts/kafka/compose.yaml config --quiet
+          PRIVATE_IP=10.0.0.1 docker compose -f hosts/command-db/compose.yaml config --quiet

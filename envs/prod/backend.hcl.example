@@ -1,0 +1,3 @@
+# backend.hcl로 복사한 뒤 bootstrap 출력의 state_bucket 값을 넣습니다. backend.hcl은 커밋하지 않습니다.
+bucket = "stockdrop-tfstate-<AWS 계정 ID>"
+region = "ap-northeast-2"

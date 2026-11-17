@@ -1,0 +1,147 @@
+# 서비스 레포가 main에 push되면 호출하는 공통 CD입니다(workflow_call).
+# 1) arm64 러너에서 이미지 빌드(서버가 모두 t4g ARM이라 에뮬레이션 없이 바로 빌드)
+# 2) OIDC로 레포 전용 배포 역할 받기(AWS 키를 GitHub에 저장하지 않음)
+# 3) ECR push(태그 = 커밋 SHA, 덮어쓰기 금지라 같은 SHA는 다시 올리지 않음)
+# 4) SSM /stockdrop/prod/release/<서비스> 갱신
+# 5) SSM Run Command로 해당 풀 서버에 한 대씩 배포. 새 컨테이너가 준비돼야 다음 서버로 넘어감
+# 조직 변수 AWS_ACCOUNT_ID가 비어 있으면(AWS 적용 전) 1)의 빌드 검사까지만 하고 끝냅니다.
+name: Deploy service
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "ECR 저장소·SSM release 이름 (예: account-service)"
+        type: string
+        required: true
+      pool:
+        description: "배포할 서버 풀 (general 또는 purchase)"
+        type: string
+        required: true
+      aws_account_id:
+        description: "조직 변수 AWS_ACCOUNT_ID. 비어 있으면 빌드만 합니다."
+        type: string
+        default: ""
+      aws_region:
+        type: string
+        default: ap-northeast-2
+      name_prefix:
+        type: string
+        default: stockdrop-prod
+      parameter_path:
+        type: string
+        default: /stockdrop/prod
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      SERVICE: ${{ inputs.service }}
+      POOL: ${{ inputs.pool }}
+      REGION: ${{ inputs.aws_region }}
+      TAG: ${{ github.sha }}
+      DEPLOY_ENABLED: ${{ inputs.aws_account_id != '' }}
+    steps:
+      - name: Check inputs
+        run: |
+          case "$POOL" in general|purchase) ;; *) echo "pool은 general 또는 purchase여야 합니다: $POOL"; exit 1;; esac
+          [[ "$SERVICE" =~ ^[a-z][a-z0-9-]+$ ]] || { echo "service 이름 형식이 올바르지 않습니다: $SERVICE"; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        if: env.DEPLOY_ENABLED == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.name_prefix }}-deploy-${{ inputs.service }}
+          aws-region: ${{ inputs.aws_region }}
+          role-session-name: gha-${{ inputs.service }}-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        if: env.DEPLOY_ENABLED == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolve image
+        id: image
+        run: |
+          if [ "$DEPLOY_ENABLED" = true ]; then
+            echo "ref=${{ steps.ecr.outputs.registry }}/stockdrop/$SERVICE:$TAG" >> "$GITHUB_OUTPUT"
+            # 같은 커밋을 다시 실행하면 이미 올라간 이미지를 그대로 씁니다(태그 덮어쓰기 금지).
+            if aws ecr describe-images --region "$REGION" --repository-name "stockdrop/$SERVICE" \
+                 --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "ref=local/$SERVICE:$TAG" >> "$GITHUB_OUTPUT"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::조직 변수 AWS_ACCOUNT_ID가 없어 빌드만 확인합니다(AWS 적용 전)."
+          fi
+
+      - name: Build image (linux/arm64)
+        if: steps.image.outputs.exists != 'true'
+        run: docker build --pull -t "${{ steps.image.outputs.ref }}" .
+
+      - name: Push image
+        if: env.DEPLOY_ENABLED == 'true' && steps.image.outputs.exists != 'true'
+        run: docker push "${{ steps.image.outputs.ref }}"
+
+      - name: Update release tag
+        id: release
+        if: env.DEPLOY_ENABLED == 'true'
+        run: |
+          name="${{ inputs.parameter_path }}/release/$SERVICE"
+          previous=$(aws ssm get-parameter --region "$REGION" --name "$name" --query Parameter.Value --output text 2>/dev/null || echo "없음")
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          aws ssm put-parameter --region "$REGION" --name "$name" --type String --value "$TAG" --overwrite >/dev/null
+          echo "release: $previous → $TAG"
+
+      # 풀 서버에 한 대씩(max-concurrency 1) 배포하고, 한 대라도 실패하면 멈춥니다(max-errors 0).
+      - name: Rolling deploy (SSM Run Command)
+        if: env.DEPLOY_ENABLED == 'true'
+        run: |
+          command_id=$(aws ssm send-command --region "$REGION" \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Project,Values=STOCKDROP" "Key=tag:Pool,Values=$POOL" \
+            --max-concurrency 1 --max-errors 0 --timeout-seconds 900 \
+            --comment "CD $SERVICE $TAG" \
+            --parameters "{\"commands\":[\"/usr/local/bin/stockdrop-deploy --wait $SERVICE\"],\"executionTimeout\":[\"900\"]}" \
+            --query Command.CommandId --output text)
+          echo "command: $command_id"
+          for _ in $(seq 1 120); do
+            sleep 10
+            status=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].Status' --output text)
+            case "$status" in Pending|InProgress|Cancelling) continue ;; esac
+            break
+          done
+          aws ssm list-command-invocations --region "$REGION" --command-id "$command_id" --details \
+            --query 'CommandInvocations[].[InstanceId,Status,CommandPlugins[0].Output]' --output text || true
+          targets=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].TargetCount' --output text)
+          if [ "$targets" = "0" ]; then
+            echo "::warning::$POOL 풀에 실행 중인 서버가 없습니다. 태그만 바뀌었고, 다음에 뜨는 서버가 이 버전으로 시작합니다."
+            exit 0
+          fi
+          [ "$status" = "Success" ] || { echo "::error::배포 실패($status). 이전 버전으로 되돌리려면 아래 요약의 롤백 명령을 쓰세요."; exit 1; }
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### $SERVICE"
+            echo "- 커밋: \`$TAG\`"
+            if [ "$DEPLOY_ENABLED" = true ]; then
+              echo "- 이미지: \`${{ steps.image.outputs.ref }}\`"
+              echo "- 이전 release: \`${{ steps.release.outputs.previous }}\`"
+              echo "- 롤백: SSM \`${{ inputs.parameter_path }}/release/$SERVICE\`를 이전 값으로 바꾸고 이 워크플로를 그 커밋에서 다시 실행하거나, docs/operations.md의 재배포 명령을 실행합니다."
+            else
+              echo "- AWS 적용 전이라 빌드만 확인했습니다."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
