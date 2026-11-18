@@ -130,10 +130,10 @@ data "aws_iam_policy_document" "deploy" {
       values   = ["STOCKDROP"]
     }
   }
-  # 보낸 명령의 결과 조회는 리소스로 좁힐 수 없습니다(읽기 전용).
+  # 보낸 명령의 결과 조회와, 시간 안에 끝나지 않은 명령 취소입니다. 리소스로 좁힐 수 없습니다.
   statement {
     sid       = "RunCommandResult"
-    actions   = ["ssm:ListCommands", "ssm:ListCommandInvocations", "ssm:GetCommandInvocation"]
+    actions   = ["ssm:ListCommands", "ssm:ListCommandInvocations", "ssm:GetCommandInvocation", "ssm:CancelCommand"]
     resources = ["*"]
   }
 }
@@ -160,4 +160,80 @@ moved {
 moved {
   from = aws_iam_role_policy.deploy["OderQueryService"]
   to   = aws_iam_role_policy.deploy["OrderQueryService"]
+}
+
+# ---------- 모니터링 CD: Monitoring 레포 main → 모니터링 EC2 설정 갱신 ----------
+# 이미지를 만들지 않고 공식 이미지를 쓰므로 ECR 권한이 없습니다. 모니터링 EC2(Role=monitoring)에 원격 명령만 보냅니다.
+locals {
+  monitoring_repo = { name = "Monitoring", repo_id = 1452190910 }
+}
+
+data "aws_iam_policy_document" "deploy_monitoring_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.github_oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "${local.github_oidc_host}:sub"
+      values = [
+        "repo:${var.github_org}/${local.monitoring_repo.name}:ref:refs/heads/main",
+        "repo:${var.github_org}@${var.github_org_id}/${local.monitoring_repo.name}@${local.monitoring_repo.repo_id}:ref:refs/heads/main",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "deploy_monitoring" {
+  name                 = "${var.name}-deploy-monitoring"
+  description          = "GitHub Actions CD for ${var.github_org}/${local.monitoring_repo.name}"
+  assume_role_policy   = data.aws_iam_policy_document.deploy_monitoring_assume.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "deploy_monitoring" {
+  statement {
+    sid       = "RunCommandDocument"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:${var.region}::document/AWS-RunShellScript"]
+  }
+  statement {
+    sid       = "RunCommandMonitoringHost"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ec2:${var.region}:${data.aws_caller_identity.current.account_id}:instance/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "ssm:resourceTag/Role"
+      values   = ["monitoring"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "ssm:resourceTag/Project"
+      values   = ["STOCKDROP"]
+    }
+  }
+  # 대상 EC2 조회와 명령 결과 확인·취소입니다. 조회는 리소스로 좁힐 수 없습니다.
+  statement {
+    sid       = "ReadAndCancel"
+    actions   = ["ec2:DescribeInstances", "ssm:ListCommands", "ssm:ListCommandInvocations", "ssm:GetCommandInvocation", "ssm:CancelCommand"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "deploy_monitoring" {
+  name   = "deploy"
+  role   = aws_iam_role.deploy_monitoring.id
+  policy = data.aws_iam_policy_document.deploy_monitoring.json
+}
+
+output "deploy_monitoring_role" {
+  description = "Monitoring 레포 CD 역할입니다."
+  value       = aws_iam_role.deploy_monitoring.arn
 }

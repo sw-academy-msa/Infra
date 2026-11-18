@@ -8,7 +8,8 @@ cd "$(dirname "$0")"
 
 : "${AWS_REGION:?AWS_REGION required}"
 PREFIX="${PARAMETER_PATH:-/stockdrop/prod}"
-REF="${MONITORING_REF:-develop}"
+# 운영은 Monitoring 레포 main을 씁니다. main 머지 시 CD가 이 스크립트를 다시 실행합니다.
+REF="${MONITORING_REF:-main}"
 DOMAIN="${INTERNAL_DOMAIN:-stockdrop.internal}"
 KAFKA="${KAFKA_BOOTSTRAP:-kafka.$DOMAIN:9092}"
 COMMAND_DB_METRICS="${COMMAND_DB_METRICS:-command-db.$DOMAIN:9187}"
@@ -60,6 +61,7 @@ compose() {
 }
 compose config --quiet
 compose up -d --wait --remove-orphans
-# 설정 파일 내용만 바뀌면 컨테이너가 재생성되지 않으므로 다시 읽게 합니다.
-compose kill -s SIGHUP prometheus >/dev/null
+# 설정 파일 내용만 바뀌면 컨테이너가 재생성되지 않으므로 재시작 없이 다시 읽게 합니다(수집이 끊기지 않음).
+# Grafana 대시보드는 provisioning이 파일 변경을 주기적으로 다시 읽습니다.
+compose kill -s SIGHUP prometheus alertmanager >/dev/null
 compose ps --format '{{.Name}} {{.Status}}'
