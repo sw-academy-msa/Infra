@@ -16,6 +16,10 @@ if [ "${1:-}" = "--wait" ]; then
   shift
 fi
 
+# 부팅 배포와 CD 배포, 또는 앞선 CD가 아직 도는 중에 들어온 CD가 같은 서버에서 겹치지 않게 순서대로 실행합니다.
+exec 9>/run/stockdrop-deploy.lock
+flock -w 600 9 || { echo "다른 배포가 10분 넘게 진행 중이라 이번 배포를 건너뜁니다." >&2; exit 1; }
+
 TOKEN=$(curl -sfX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
 md() { curl -sf -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/$1"; }
 INSTANCE_ID=$(md instance-id)

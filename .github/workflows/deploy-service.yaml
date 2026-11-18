@@ -116,12 +116,23 @@ jobs:
             --parameters "{\"commands\":[\"/usr/local/bin/stockdrop-deploy --wait $SERVICE\"],\"executionTimeout\":[\"900\"]}" \
             --query Command.CommandId --output text)
           echo "command: $command_id"
+          # 조회가 한 번 실패해도 바로 끝내지 않고 다시 확인합니다. 원격 명령이 끝나기 전에 이 작업이 끝나면
+          # 동시 실행 그룹이 풀려 다음 배포와 겹칠 수 있기 때문입니다.
+          status=Unknown
           for _ in $(seq 1 120); do
             sleep 10
-            status=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].Status' --output text)
-            case "$status" in Pending|InProgress|Cancelling) continue ;; esac
+            status=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].Status' --output text 2>/dev/null || echo Unknown)
+            case "$status" in Pending|InProgress|Cancelling|Delayed|Unknown|None) continue ;; esac
             break
           done
+          case "$status" in
+            Pending|InProgress|Cancelling|Delayed|Unknown|None)
+              # 시간 안에 끝나지 않으면 원격 명령을 취소하고 실패로 끝냅니다(서버는 stockdrop-deploy 잠금으로도 겹침을 막음).
+              aws ssm cancel-command --region "$REGION" --command-id "$command_id" >/dev/null 2>&1 || true
+              echo "::error::배포 명령이 20분 안에 끝나지 않아 취소했습니다($status). 서버 상태를 확인하세요."
+              exit 1
+              ;;
+          esac
           aws ssm list-command-invocations --region "$REGION" --command-id "$command_id" --details \
             --query 'CommandInvocations[].[InstanceId,Status,CommandPlugins[0].Output]' --output text || true
           targets=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].TargetCount' --output text)
