@@ -75,6 +75,8 @@ resource "aws_db_parameter_group" "this" {
   parameter {
     name  = "rds.force_ssl"
     value = "1" # 서비스 JDBC는 TLS로만 접속합니다.
+    # AWS가 이 값을 pending-reboot로 저장해 같게 맞춥니다. 다르면 plan마다 변경이 반복됩니다.
+    apply_method = "pending-reboot"
   }
 
   lifecycle {

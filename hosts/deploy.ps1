@@ -17,6 +17,8 @@ param(
     [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
+# Windows AWS CLI는 file:// 파일을 시스템 인코딩(CP949)으로 읽어 한글이 든 명령 JSON을 거부합니다. UTF-8로 읽게 합니다.
+$env:AWS_CLI_FILE_ENCODING = 'UTF-8'
 
 # rds는 모니터링 EC2에서 실행합니다. 나머지는 역할 이름의 EC2가 대상입니다.
 $target = if ($Role -eq 'rds') { 'monitoring' } else { $Role }

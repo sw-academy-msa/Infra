@@ -30,7 +30,11 @@ mkdir -p secrets
 printf '%s' "$ADMIN" > secrets/admin-password && chown 70:70 secrets/admin-password && chmod 400 secrets/admin-password
 printf '%s' "$METRICS" > secrets/metrics-password && chown 65534:65534 secrets/metrics-password && chmod 400 secrets/metrics-password
 
+# 위 umask 077 때문에 root 전용(700)으로 만들어지면 uid 70(postgres)이 들어가지 못해 초기화가 실패합니다.
+# Kafka·모니터링처럼 데이터 폴더를 컨테이너 사용자 소유로 둡니다.
 mkdir -p /data/postgres
+chown 70:70 /data/postgres
+chmod 700 /data/postgres
 PRIVATE_IP="$PRIVATE_IP" docker compose up -d --wait
 
 # 비밀번호는 표준 입력의 psql 변수로만 넘깁니다. ps나 셸 기록에 남지 않습니다.

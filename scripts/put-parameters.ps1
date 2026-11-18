@@ -32,6 +32,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $env:AWS_PROFILE = $AwsProfile
+# Windows AWS CLI는 file:// 파일을 시스템 인코딩(CP949)으로 읽습니다. 한글이 든 값도 깨지지 않게 UTF-8로 읽게 합니다.
+$env:AWS_CLI_FILE_ENCODING = 'UTF-8'
 $awsCommand = Get-Command aws -ErrorAction SilentlyContinue
 $script:Aws = if ($awsCommand) { $awsCommand.Source } else { 'C:\Program Files\Amazon\AWSCLIV2\aws.exe' }
 if (-not (Test-Path $script:Aws) -and -not $awsCommand) { throw 'AWS CLI를 찾을 수 없습니다.' }

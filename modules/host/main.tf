@@ -94,11 +94,13 @@ resource "aws_instance" "this" {
   user_data = <<-EOT
     #!/bin/bash
     set -euo pipefail
-    dnf install -y docker
+    # 부팅 직후 네트워크·패키지 저장소가 잠깐 응답하지 않을 수 있어 몇 번 다시 시도합니다.
+    retry() { for n in 1 2 3 4 5; do "$@" && return 0; echo "retry $n/5: $1"; sleep 15; done; return 1; }
+    retry dnf install -y docker
     systemctl enable --now docker
     usermod -aG docker ec2-user
     mkdir -p /usr/local/lib/docker/cli-plugins
-    curl -fsSL "https://github.com/docker/compose/releases/download/${var.compose_version}/docker-compose-linux-aarch64" \
+    retry curl -fsSL "https://github.com/docker/compose/releases/download/${var.compose_version}/docker-compose-linux-aarch64" \
       -o /usr/local/lib/docker/cli-plugins/docker-compose
     chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 

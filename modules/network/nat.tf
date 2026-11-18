@@ -80,7 +80,14 @@ resource "aws_instance" "nat" {
   user_data = <<-EOT
     #!/bin/bash
     set -euo pipefail
-    dnf install -y iptables-services
+    # t4g.nano(0.5GB)는 dnf 메타데이터를 받다 메모리가 부족해 강제 종료됩니다. 설치하는 동안만 스왑을 둡니다.
+    dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null
+    swapon /swapfile
+    dnf install -y -q iptables-services
+    swapoff /swapfile
+    rm -f /swapfile
     echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/90-nat.conf
     sysctl -p /etc/sysctl.d/90-nat.conf
     IFACE=$(ip route show default | awk '{print $5}')
