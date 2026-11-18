@@ -17,8 +17,8 @@
 | Kafka 단일 EC2 | `modules/host` + `hosts/kafka`(KRaft, 토픽 19개, JMX) | `modules/host`, `hosts/kafka` |
 | Command PostgreSQL EC2 | `modules/host` + `hosts/command-db`(초기화, 백업·복원, exporter) | `hosts/command-db` |
 | 모니터링 EC2 | `modules/host` + `hosts/monitoring`(Monitoring 레포 + 운영 덮어쓰기) | `hosts/monitoring` |
-| RDS PostgreSQL | Multi-AZ, gp3, 암호화, 마스터 비밀번호 RDS 관리, Parameter Group | `modules/rds`, `hosts/rds` |
-| ElastiCache Redis | 복제 그룹(Primary+Replica), Multi-AZ, TLS, 사용자 그룹 | `modules/redis`, `scripts/redis-app-user.ps1` |
+| RDS PostgreSQL | Single-AZ(비용 때문에 `rds_multi_az=false`, 켜면 Multi-AZ), gp3, 암호화, 마스터 비밀번호 RDS 관리, Parameter Group | `modules/rds`, `hosts/rds` |
+| ElastiCache Redis | **기본 꺼짐**(`enable_redis=false`, 쓰는 서비스 없음). 켜면 복제 그룹(Primary+Replica), Multi-AZ, TLS, 사용자 그룹 | `modules/redis`, `scripts/redis-app-user.ps1` |
 | S3 | 판매자 증빙, 상품 이미지, 문의 이미지, Command DB 백업 | `modules/s3` |
 | ECR | 서비스 8 + Gateway 2 + Eureka 1 | `modules/ecr` |
 | EventBridge + Lambda | Kafka stopped 재기동 | `modules/kafka_restart` |
@@ -26,7 +26,7 @@
 | 내부 DNS | Private Zone `stockdrop.internal` | `envs/prod/dns.tf` |
 | IAM | EC2 역할 5개 + Lambda 역할 | `modules/iam`, `modules/kafka_restart` |
 
-기본 EC2 7대 외에 추가되는 관리형 리소스: NAT 인스턴스 1대(EC2), Lambda 1개, RDS 2대(Primary+Standby), Redis 노드 2개.
+기본 EC2 7대 외에 추가되는 관리형 리소스: NAT 인스턴스 1대(EC2), Lambda 1개, RDS 1대(Single-AZ). Redis는 기본 꺼짐.
 
 ## Eureka 주소 관리
 
@@ -62,4 +62,4 @@ ASG가 서버를 바꾸거나 늘려도 서비스가 Eureka를 찾을 수 있어
 | 캐시 | Redis | 일반 풀 서비스 | 재고 원본이 아닙니다 |
 | 이미지·증빙 원본 | S3 | Account, Product Command·Query, AI, Order Command | presigned URL |
 
-Command 원본(product, orders)과 그 Outbox는 RDS에 다시 만들지 않습니다. RDS Multi-AZ의 대기 DB는 장애 전환용이며 읽기 조회에 쓰지 않습니다.
+Command 원본(product, orders)과 그 Outbox는 RDS에 다시 만들지 않습니다. RDS는 Single-AZ라 AZ 장애 때는 자동 전환되지 않고 스냅샷·시점 복구로 되살립니다(`rds_multi_az=true`로 바꾸면 대기 DB가 생기며, 대기 DB는 읽기 조회에 쓰지 않습니다).

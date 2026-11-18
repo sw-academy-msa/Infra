@@ -3,6 +3,22 @@
 서비스 서버의 `stockdrop-deploy`가 이 경로를 읽어 컨테이너 환경변수와 파일을 만듭니다.
 각 서비스의 `application.yaml`, `application-prod.yaml`에서 기본값이 없는 값과, 현재 서버에서 켜 둔 기능 플래그를 기준으로 정리했습니다.
 
+## 입력 스크립트
+
+`scripts/put-parameters.ps1`이 아래 값을 모두 넣습니다. 여러 번 실행해도 되고, 이미 있는 비밀값은 덮어쓰지 않습니다.
+
+```powershell
+.\scripts\put-parameters.ps1 -DryRun                             # 넣을 이름만 확인
+.\scripts\put-parameters.ps1                                     # apply 전: DB 공통 비밀번호·외부 키 입력
+cd envs\prod; terraform output -json > ..\..\tf-output.json; cd ..\..
+.\scripts\put-parameters.ps1 -TerraformOutput .\tf-output.json   # apply 뒤: RDS·Redis 주소
+Remove-Item .\tf-output.json
+```
+
+- 기존 서버 데이터를 옮길 때는 `-EnvRoot <서비스 폴더들이 있는 경로>`를 줍니다. JWT 서명 키·판매자 암호화 키·푸시 암호화 키·VAPID 키·서비스 인증 비밀값을 그 서버의 `.env`, `.keys`에서 그대로 가져옵니다. 다르면 기존 데이터를 복호화하지 못합니다.
+- 새로 만드는 값에는 Node.js(키 생성)와 Docker(BCrypt 해시)가 필요합니다.
+- 값은 컨테이너 env 파일에 작은따옴표로 감싸 들어갑니다. Compose가 `$`를 변수로 해석해 BCrypt 해시가 깨지는 것을 막기 위해서입니다. 값에 작은따옴표를 넣지 않습니다.
+
 ## 규칙
 
 | 경로 | 용도 |
@@ -68,7 +84,7 @@ Redis는 캐시입니다. 재고·주문의 기준은 Command DB이며 Redis가 
 | product-command-service | `jdbc:postgresql://command-db.stockdrop.internal:5432/product_command` |
 | order-command-service | `jdbc:postgresql://command-db.stockdrop.internal:5432/order_command` |
 
-DB 이름은 현재 로컬과 같게 맞췄습니다. 서비스마다 전용 계정을 만들고 비밀번호를 각각 다르게 둡니다.
+DB 이름은 현재 로컬과 같게 맞췄습니다. 서비스마다 전용 계정을 만듭니다. 비밀번호는 입력 스크립트가 공통 값 하나를 받아 서비스 DB 8개와 Command DB 관리자·지표 계정에 넣습니다(20자 이상, 영문·숫자·`_.~-`만).
 
 ### account-service
 
@@ -77,7 +93,10 @@ DB 이름은 현재 로컬과 같게 맞췄습니다. 서비스마다 전용 계
 | `JWT_SIGNING_KEY_LOCATION` | `file:/run/secrets/stockdrop/account-signing.jwk` |
 | `files/account-signing.jwk` **S** | 서명 키 JWK 파일의 base64. A/B Account가 같은 키를 써야 합니다. |
 | `SELLER_DATA_ENCRYPTION_KEY` **S** | 판매자 계좌 등 암호화 키 |
-| `ORDER_SERVICE_SECRET_HASH` **S** | Order 서비스 인증 비밀값의 해시 |
+| `ORDER_SERVICE_SECRET_HASH` **S** | Order 서비스 인증 비밀값의 BCrypt 해시 |
+| `account.service-auth.clients.notification-service.subject` | shared `NOTIFICATION_SERVICE_SUBJECT`와 같은 값 |
+| `account.service-auth.clients.notification-service.secret-hash` **S** | Notification `NOTIFICATION_CLIENT_SECRET`의 BCrypt 해시 |
+| `account.service-auth.clients.notification-service.scopes` | `account.notifications.read,ai.personalization.read` |
 | `MAIL_HOST`, `MAIL_USERNAME`, `MAIL_FROM` | 메일 발송 계정 |
 | `MAIL_PASSWORD` **S** | 메일 앱 비밀번호 |
 | `SELLER_CERTIFICATE_BUCKET` | `<버킷:seller-certificates>` |

@@ -68,9 +68,9 @@ variable "rds_instance_class" {
 }
 
 variable "rds_multi_az" {
-  description = "다른 AZ에 동기 대기 DB를 두고 장애 때 자동 전환합니다. 대기 DB는 읽기용이 아닙니다. 비용이 약 2배입니다."
+  description = "다른 AZ에 동기 대기 DB를 두고 장애 때 자동 전환합니다. 대기 DB는 읽기용이 아닙니다. 비용이 약 2배라 기본은 끕니다(장애 시 수동 복구)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "host_instance_types" {
@@ -160,6 +160,12 @@ variable "purchase_services" {
     { name = "order-command-service", port = 8083, memory_mb = 640 },
     { name = "product-command-service", port = 8081, memory_mb = 640 },
   ]
+}
+
+variable "enable_redis" {
+  description = "ElastiCache Redis를 만듭니다. 아직 Redis를 쓰는 서비스가 없어 기본은 끕니다. 캐시를 붙일 때 true로 바꿉니다."
+  type        = bool
+  default     = false
 }
 
 variable "redis_node_type" {

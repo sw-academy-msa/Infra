@@ -38,12 +38,20 @@ param() {
 }
 
 # 경로 아래 값을 "이름=값" 줄로 출력합니다. files/ 아래 값은 환경변수가 아니라 파일로 만들므로 건너뜁니다.
+# Compose는 env_file 값의 $를 변수로 해석해 bcrypt 해시($2a$12$...)를 깨뜨리므로 작은따옴표로 감싸 그대로 넘깁니다.
 env_lines() {
   aws ssm get-parameters-by-path --region "$REGION" --path "$1" \
     --with-decryption --recursive --query 'Parameters[].[Name,Value]' --output text |
     while IFS=$'\t' read -r name value; do
       case "$name" in */files/*) continue ;; esac
-      [ -n "$name" ] && echo "${name##*/}=$value"
+      [ -n "$name" ] || continue
+      if [[ "$value" == *"'"* ]]; then
+        # 작은따옴표가 든 값은 감쌀 수 없습니다. $까지 함께 있으면 값이 바뀔 수 있어 이름만 경고합니다.
+        [[ "$value" == *'$'* ]] && echo "경고: 작은따옴표와 \$가 함께 있어 값이 바뀔 수 있습니다: ${name##*/}" >&2
+        echo "${name##*/}=$value"
+      else
+        echo "${name##*/}='$value'"
+      fi
     done
 }
 

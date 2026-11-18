@@ -77,9 +77,10 @@ run "plan" {
     )
     error_message = "풀 안의 서비스 호스트 포트가 겹칩니다."
   }
+  # 비용 때문에 RDS는 Single-AZ, Redis는 끈 상태로 시작합니다(2026-11 결정). 바꾸면 이 조건도 함께 바꿉니다.
   assert {
-    condition     = var.rds_multi_az
-    error_message = "일반 RDS는 Multi-AZ여야 합니다."
+    condition     = !var.rds_multi_az && !var.enable_redis
+    error_message = "기본값은 RDS Single-AZ, Redis 끔입니다."
   }
   assert {
     condition     = length(local.eureka_nodes) == 2

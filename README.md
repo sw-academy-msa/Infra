@@ -11,7 +11,7 @@ STOCKDROP 운영 환경(AWS 서울 리전)을 Terraform으로 관리합니다. �
 | 일반 풀 | ASG 1개, 두 AZ, t4g.medium 2대(최대 변수). 서버마다 Gateway·Eureka·Account·Product Query·Order Query·Payment·AI·Notification 8개 |
 | 구매 풀 | ASG 1개, 두 AZ, t4g.small 2대(최대 변수). 서버마다 PurchaseGateway·Order Command·Product Command 3개 |
 | 고정 역할 EC2 | Kafka(t4g.small), Command PostgreSQL(사양 변수), 모니터링(t4g.small). AZ1 app 서브넷, 별도 데이터 EBS |
-| 관리형 | RDS PostgreSQL Multi-AZ, ElastiCache Redis(Primary+Replica), S3 4개, ECR 11개, Kafka 재기동 Lambda, CloudWatch 알람 |
+| 관리형 | RDS PostgreSQL Single-AZ(변수로 Multi-AZ 전환), ElastiCache Redis(기본 꺼짐), S3 4개, ECR 11개, Kafka 재기동 Lambda, CloudWatch 알람 |
 | 내부 DNS | `stockdrop.internal` Private Zone: `kafka`, `command-db`, `monitoring`, `eureka-a`, `eureka-c` |
 
 기본 정상 상태 EC2는 7대(일반 2 + 구매 2 + 고정 3)이고, 이와 별도로 NAT 인스턴스 1대가 있습니다(아래 "설계와 다른 점").
@@ -29,8 +29,8 @@ STOCKDROP 운영 환경(AWS 서울 리전)을 Terraform으로 관리합니다. �
 | `modules/alb` | ALB, 대상 그룹 2개, ACM DNS 검증, `api`·`pay` Alias |
 | `modules/pool` | Launch Template + ASG + CPU 증설 정책 + lifecycle hook, 부팅·배포 스크립트 |
 | `modules/host` | 고정 역할 EC2(고정 사설 IP, 데이터 EBS `/data`, 삭제 방지) |
-| `modules/rds` | 일반 RDS(Multi-AZ, gp3, 암호화, Parameter Group, 로그 보관) |
-| `modules/redis` | ElastiCache Redis OSS(Multi-AZ, 자동 장애 전환, TLS, 사용자 그룹) |
+| `modules/rds` | 일반 RDS(Single-AZ 기본, gp3, 암호화, Parameter Group, 로그 보관) |
+| `modules/redis` | ElastiCache Redis OSS(`enable_redis=true`일 때만 생성. Multi-AZ, 자동 장애 전환, TLS, 사용자 그룹) |
 | `modules/s3` | 판매자 증빙, 상품 이미지, 문의 이미지, Command DB 백업 버킷 |
 | `modules/ecr` | 이미지 저장소 11개(태그 덮어쓰기 금지, 스캔, 최근 20개 보관) |
 | `modules/kafka_restart` | Kafka stopped → EventBridge → Lambda 재시작(유지보수 태그 제외) |
@@ -67,7 +67,10 @@ terraform init -backend-config=backend.hcl
 
 ```powershell
 # 6) 비밀정보 주입 (apply 전): docs/parameters.md의 SSM 값을 넣습니다. Terraform은 이 값을 읽거나 만들지 않습니다.
-aws ssm put-parameter --name /stockdrop/prod/payment-service/DB_PASSWORD --type SecureString --value "<값>"
+#    apply 뒤에는 -TerraformOutput으로 한 번 더 실행해 RDS·Redis 주소를 채웁니다.
+cd ..\..
+powershell -ExecutionPolicy Bypass -File .\scripts\put-parameters.ps1
+cd envs\prod
 
 # 7) plan 검토 → 8) apply (사용자가 직접 실행)
 terraform plan -out tfplan
@@ -80,7 +83,7 @@ cd ..\..
 .\hosts\deploy.ps1 -Role command-db   # Command DB 계정·스키마 + 매일 백업 타이머
 .\hosts\deploy.ps1 -Role monitoring   # Prometheus·Grafana·Alertmanager
 .\hosts\deploy.ps1 -Role rds          # 일반 RDS 서비스별 DB·계정(모니터링 EC2에서 실행)
-.\scripts\redis-app-user.ps1          # Redis 앱 사용자
+.\scripts\redis-app-user.ps1          # Redis 앱 사용자(enable_redis=true일 때만)
 #    이어서 CD(GitHub Actions)가 이미지를 ECR에 올리고 /stockdrop/prod/release/<서비스>를 갱신 → SSM으로 재배포합니다.
 #    테이블은 서비스가 뜰 때 각자의 Flyway가 만듭니다.
 
@@ -161,14 +164,14 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 |---|---|
 | 일반 풀 t4g.medium 2대 + 구매 풀 t4g.small 2대 + EBS | 95달러 |
 | Kafka·Command DB·모니터링 t4g.small 3대 + EBS | 50달러 |
-| RDS db.t4g.micro Multi-AZ + 20GB | 45달러 |
-| ElastiCache cache.t4g.micro 2노드 | 30달러 |
+| RDS db.t4g.micro Single-AZ + 20GB | 24달러 |
+| ElastiCache Redis | 0달러 (기본 꺼짐, 켜면 2노드 약 37달러) |
 | ALB (기본 + 공인 IP) | 25달러~ |
 | NAT 인스턴스 + 고정 IP | 7달러 |
 | Route 53 Zone 2개, Secrets Manager, Lambda, CloudWatch 알람 약 50개 | 6달러 |
 | ECR·S3 | 저장량에 따라 |
 
-합계 약 260달러입니다. 증설 시 서버 수만큼 늘고, 정확한 값은 AWS 요금 계산기로 확인합니다.
+합계 약 210~220달러입니다(공인 IPv4 요금 포함). 증설 시 서버 수만큼 늘고, 정확한 값은 AWS 요금 계산기로 확인합니다.
 
 ## 검증
 

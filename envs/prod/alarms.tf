@@ -164,8 +164,8 @@ locals {
     connections  = { metric = "DatabaseConnections", stat = "Maximum", op = "GreaterThanThreshold", threshold = 90, desc = "RDS 연결 수 90 초과" }
     memory       = { metric = "FreeableMemory", stat = "Minimum", op = "LessThanThreshold", threshold = 104857600, desc = "RDS 여유 메모리 100MB 미만" }
   }
-  # Redis 지표는 노드별입니다. 복제 그룹 ID 뒤에 -001, -002가 붙습니다.
-  redis_nodes = { for i in [1, 2] : format("%03d", i) => "${module.redis.replication_group_id}-${format("%03d", i)}" }
+  # Redis 지표는 노드별입니다. 복제 그룹 ID 뒤에 -001, -002가 붙습니다. Redis를 끄면 알람도 만들지 않습니다.
+  redis_nodes = var.enable_redis ? { for i in [1, 2] : format("%03d", i) => "${module.redis[0].replication_group_id}-${format("%03d", i)}" } : {}
   redis_alarms = {
     memory    = { metric = "DatabaseMemoryUsagePercentage", stat = "Maximum", op = "GreaterThanThreshold", threshold = 80, desc = "Redis 메모리 80% 초과" }
     evictions = { metric = "Evictions", stat = "Sum", op = "GreaterThanThreshold", threshold = 100, desc = "Redis 5분 eviction 100건 초과" }
@@ -212,11 +212,12 @@ resource "aws_cloudwatch_metric_alarm" "redis" {
 
 # Replica가 Primary를 따라가지 못하면 장애 전환 때 최근 캐시가 사라질 수 있습니다.
 resource "aws_cloudwatch_metric_alarm" "redis_replication_lag" {
+  count               = var.enable_redis ? 1 : 0
   alarm_name          = "${var.name}-redis-replication-lag"
   alarm_description   = "Redis 복제 지연 5초 초과"
   namespace           = "AWS/ElastiCache"
   metric_name         = "ReplicationLag"
-  dimensions          = { CacheClusterId = local.redis_nodes["002"] }
+  dimensions          = { CacheClusterId = lookup(local.redis_nodes, "002", "") }
   statistic           = "Maximum"
   period              = 60
   evaluation_periods  = 5
