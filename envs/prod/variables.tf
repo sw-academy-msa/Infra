@@ -190,3 +190,9 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "pool_health_check_type" {
+  description = "일반·구매 풀의 서버 교체 기준입니다. 앱이 하나도 배포되지 않은 첫 배포 때만 EC2로 두고, Gateway가 ALB 검사를 통과하면 ELB로 되돌립니다."
+  type        = string
+  default     = "ELB"
+}

@@ -141,6 +141,7 @@ resource "aws_route53_record" "eureka" {
 
 # 일반 풀: 두 AZ에 걸친 ASG 하나입니다. 서버마다 Gateway·Eureka·업무 서비스 6개를 함께 띄웁니다.
 module "general_pool" {
+  health_check_type  = var.pool_health_check_type
   source             = "../../modules/pool"
   name               = var.name
   pool               = "general"
@@ -170,6 +171,7 @@ module "general_pool" {
 
 # 구매 풀: 두 AZ에 걸친 ASG 하나입니다. Command DB 접근용 그룹을 추가로 붙입니다.
 module "purchase_pool" {
+  health_check_type       = var.pool_health_check_type
   source                  = "../../modules/pool"
   name                    = var.name
   pool                    = "purchase"

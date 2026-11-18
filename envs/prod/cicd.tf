@@ -9,6 +9,12 @@ variable "github_org" {
   default     = "sw-academy-msa"
 }
 
+variable "github_org_id" {
+  description = "GitHub 조직의 고유 ID입니다. 레포가 immutable subject를 쓰면 OIDC sub에 이름과 함께 ID가 들어갑니다."
+  type        = number
+  default     = 341201926
+}
+
 variable "create_github_oidc_provider" {
   description = "계정에 GitHub OIDC 공급자가 이미 있으면 false로 두고 기존 것을 씁니다(계정당 하나만 만들 수 있음)."
   type        = bool
@@ -16,19 +22,20 @@ variable "create_github_oidc_provider" {
 }
 
 locals {
-  # GitHub 레포 이름 → ECR 저장소(서비스) 이름과 배포할 풀입니다. 레포 이름은 GitHub에 있는 그대로입니다.
+  # GitHub 레포 이름 → ECR 저장소(서비스) 이름, 배포할 풀, 레포 고유 ID입니다. 레포 이름은 GitHub에 있는 그대로입니다.
+  # repo_id는 `gh api repos/<조직>/<레포> --jq .id`로 확인합니다.
   deploy_targets = {
-    AccountService        = { service = "account-service", pool = "general" }
-    ProductQueryService   = { service = "product-query-service", pool = "general" }
-    OrderQueryService     = { service = "order-query-service", pool = "general" }
-    PaymentService        = { service = "payment-service", pool = "general" }
-    AIService             = { service = "ai-service", pool = "general" }
-    NotificationService   = { service = "notification-service", pool = "general" }
-    GeneralGateway        = { service = "gateway", pool = "general" }
-    Eureka                = { service = "eureka", pool = "general" }
-    ProductCommandService = { service = "product-command-service", pool = "purchase" }
-    OrderCommandService   = { service = "order-command-service", pool = "purchase" }
-    PurchaseGateway       = { service = "purchase-gateway", pool = "purchase" }
+    AccountService        = { service = "account-service", pool = "general", repo_id = 1429700003 }
+    ProductQueryService   = { service = "product-query-service", pool = "general", repo_id = 1442004312 }
+    OrderQueryService     = { service = "order-query-service", pool = "general", repo_id = 1446824605 }
+    PaymentService        = { service = "payment-service", pool = "general", repo_id = 1444060449 }
+    AIService             = { service = "ai-service", pool = "general", repo_id = 1450068754 }
+    NotificationService   = { service = "notification-service", pool = "general", repo_id = 1452173067 }
+    GeneralGateway        = { service = "gateway", pool = "general", repo_id = 1433374354 }
+    Eureka                = { service = "eureka", pool = "general", repo_id = 1433312560 }
+    ProductCommandService = { service = "product-command-service", pool = "purchase", repo_id = 1440682142 }
+    OrderCommandService   = { service = "order-command-service", pool = "purchase", repo_id = 1442519946 }
+    PurchaseGateway       = { service = "purchase-gateway", pool = "purchase", repo_id = 1440864967 }
   }
   github_oidc_host = "token.actions.githubusercontent.com"
   github_oidc_arn  = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
@@ -62,7 +69,11 @@ data "aws_iam_policy_document" "deploy_assume" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_oidc_host}:sub"
-      values   = ["repo:${var.github_org}/${each.key}:ref:refs/heads/main"]
+      # 레포 OIDC 설정이 immutable subject(이름@ID)면 둘째 값, 기본 형식이면 첫째 값으로 옵니다. 둘 다 그 레포의 main만 허용합니다.
+      values = [
+        "repo:${var.github_org}/${each.key}:ref:refs/heads/main",
+        "repo:${var.github_org}@${var.github_org_id}/${each.key}@${each.value.repo_id}:ref:refs/heads/main",
+      ]
     }
   }
 }

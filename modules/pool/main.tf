@@ -102,6 +102,16 @@ variable "kafka_bootstrap_servers" {
   type = string
 }
 
+variable "health_check_type" {
+  description = "서버 교체 기준입니다. 평소 ELB(앱 상태)이며, 앱을 처음 배포하기 전에는 EC2(서버 상태)로 둬야 서버가 반복 교체되지 않습니다."
+  type        = string
+  default     = "ELB"
+  validation {
+    condition     = contains(["ELB", "EC2"], var.health_check_type)
+    error_message = "ELB 또는 EC2만 쓸 수 있습니다."
+  }
+}
+
 variable "health_check_grace_seconds" {
   description = "JVM 여러 개가 뜨는 시간을 기다린 뒤 ALB 헬스체크 결과로 서버를 교체합니다."
   type        = number
@@ -199,7 +209,7 @@ resource "aws_autoscaling_group" "this" {
   max_size                  = var.max_size
   desired_capacity          = var.desired_capacity
   target_group_arns         = var.target_group_arns
-  health_check_type         = "ELB"
+  health_check_type         = var.health_check_type
   health_check_grace_period = var.health_check_grace_seconds
   default_instance_warmup   = var.health_check_grace_seconds
   # 오래된 Launch Template 서버부터 줄여, 줄일 때 최신 설정 서버가 남게 합니다.
