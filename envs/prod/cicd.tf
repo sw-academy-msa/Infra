@@ -20,7 +20,7 @@ locals {
   deploy_targets = {
     AccountService        = { service = "account-service", pool = "general" }
     ProductQueryService   = { service = "product-query-service", pool = "general" }
-    OderQueryService      = { service = "order-query-service", pool = "general" }
+    OrderQueryService     = { service = "order-query-service", pool = "general" }
     PaymentService        = { service = "payment-service", pool = "general" }
     AIService             = { service = "ai-service", pool = "general" }
     NotificationService   = { service = "notification-service", pool = "general" }
@@ -137,4 +137,16 @@ resource "aws_iam_role_policy" "deploy" {
 output "deploy_roles" {
   description = "레포별 CD 역할입니다. 이름 규칙은 <name>-deploy-<서비스>이며, 워크플로는 조직 변수 AWS_ACCOUNT_ID로 ARN을 만듭니다."
   value       = { for k, r in aws_iam_role.deploy : k => r.arn }
+}
+
+# GitHub 레포 이름이 OderQueryService → OrderQueryService로 바뀌었습니다. OIDC는 현재 이름을 보내므로 키를 옮기고,
+# 같은 이름의 역할을 지우고 다시 만들지 않도록 상태만 옮깁니다.
+moved {
+  from = aws_iam_role.deploy["OderQueryService"]
+  to   = aws_iam_role.deploy["OrderQueryService"]
+}
+
+moved {
+  from = aws_iam_role_policy.deploy["OderQueryService"]
+  to   = aws_iam_role_policy.deploy["OrderQueryService"]
 }

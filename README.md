@@ -119,7 +119,7 @@ cd ..\..
 
 | 레포 | 서비스 | 풀 |
 |---|---|---|
-| AccountService, ProductQueryService, OderQueryService, PaymentService, AIService, NotificationService, GeneralGateway, Eureka | account-service 등 | general |
+| AccountService, ProductQueryService, OrderQueryService, PaymentService, AIService, NotificationService, GeneralGateway, Eureka | account-service 등 | general |
 | ProductCommandService, OrderCommandService, PurchaseGateway | product-command-service 등 | purchase |
 
 - **권한:** 역할은 레포마다 하나예요. 그 레포의 **main 브랜치**에서 실행될 때만 받을 수 있고, 자기 ECR 저장소, 자기 release 태그, 자기 풀 서버에만 접근해요(`envs/prod/cicd.tf`).
