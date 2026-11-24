@@ -186,7 +186,7 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 
 | Pool | 사양 및 기본 대수 | 서비스와 컨테이너 한도(MiB) |
 |---|---|---|
-| general (core) | t4g.medium 2 | eureka 384, gateway 384, account-service 512, notification-service 448 |
+| general (core) | t4g.medium 2 | eureka 384, gateway 384, account-service 512, notification-service 512 |
 | query | t4g.medium 2 | product-query-service 448, order-query-service 448, payment-service 448, ai-service 768 |
 | purchase | t4g.medium 2 | purchase-gateway 384, order-command-service 640, product-command-service 640 |
 

@@ -145,7 +145,7 @@ variable "general_services" {
     { name = "eureka", port = 8761, memory_mb = 384 },
     { name = "gateway", port = 8000, memory_mb = 384 },
     { name = "account-service", port = 8080, memory_mb = 512 },
-    { name = "notification-service", port = 8087, memory_mb = 448 },
+    { name = "notification-service", port = 8087, memory_mb = 512 },
   ]
 }
 
