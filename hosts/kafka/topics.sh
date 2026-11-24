@@ -6,6 +6,7 @@ set -euo pipefail
 CONTAINER="${KAFKA_CONTAINER:-stockdrop-kafka}"
 BOOTSTRAP="127.0.0.1:9092"
 DLT_RETENTION_MS=2592000000 # 실패 메시지는 원인 조사를 위해 30일 보관합니다.
+MEMBERSHIP_RETENTION_MS=7776000000 # 회원제 원본 이벤트는 대사와 재처리를 위해 90일 보관합니다.
 
 create() {
   local topic="$1" partitions="$2"
@@ -50,6 +51,18 @@ for t in \
   stockdrop.notifications.order.v1; do
   create "$t" 3
 done
+
+# 회원제 명령과 결과는 Account와 Payment가 계정 단위 키로 주고받습니다. 본문은 16KiB 이하입니다.
+for t in \
+  stockdrop.membership.commands.private.v1 \
+  stockdrop.membership.events.private.v1; do
+  create "$t" 2 retention.ms="$MEMBERSHIP_RETENTION_MS"
+  create "$t.DLT" 2 retention.ms="$DLT_RETENTION_MS"
+done
+
+# 회원제 알림은 다른 알림 토픽과 같은 3개 파티션이며 Notification 전용 소비자가 DLT를 씁니다.
+create stockdrop.notifications.membership.v1 3 retention.ms="$MEMBERSHIP_RETENTION_MS"
+create stockdrop.notifications.membership.v1.DLT 3 retention.ms="$DLT_RETENTION_MS"
 
 echo "--- 현재 토픽"
 docker exec -e KAFKA_OPTS= "$CONTAINER" /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --describe \

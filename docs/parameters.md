@@ -178,6 +178,30 @@ GA 추천(`AI_GA_ENABLED`, `GA_BIGQUERY_*`)과 개인화(`AI_PERSONALIZATION_ENA
 | `PUSH_ENCRYPTION_KEY` **S** | 구독 정보 암호화 키 |
 | `WEB_PUSH_ENABLED`, `NOTIFICATION_CONSUMER_ENABLED`, `NOTIFICATION_BUSINESS_CONSUMER_ENABLED`, `NOTIFICATION_PRODUCT_ALERT_ENABLED`, `NOTIFICATION_WORKER_ENABLED` | `true` |
 
+### 회원제 (운영 활성화 승인 전에는 넣지 않음)
+
+월 구독 회원제 코드는 모든 플래그가 기본 false라 아래 값이 없어도 기존 기능에 영향이 없습니다. 운영 배포 승인 뒤 사용자가 직접 넣습니다. 비밀값은 화면, 명령 인자, PR, 채팅에 남기지 않고 Console의 Parameter Store 화면에서 SecureString으로 입력합니다. 로컬 `.env`의 키를 재사용하지 않고 운영 전용 새 값을 만듭니다. `put-parameters.ps1`에는 아직 넣지 않았습니다.
+
+| 경로 | 값 |
+|---|---|
+| `payment-service/TOSS_BILLING_CLIENT_KEY` | 토스 API 개별 연동 클라이언트 키(자동결제 MID). 위젯 키 `TOSS_CLIENT_KEY`와 다릅니다. |
+| `payment-service/TOSS_BILLING_SECRET_KEY` **S** | 같은 MID의 API 개별 연동 시크릿 키. 현재 코드는 test_ 키만 허용합니다. |
+| `payment-service/MEMBERSHIP_BILLING_DATA_KEY_V1` **S** | 빌링키 암호화용 32바이트 AES 키의 base64. 판매자, 푸시 키와 다른 새 값입니다. 바꾸면 기존 빌링키를 복호화하지 못합니다. |
+| `payment-service/MEMBERSHIP_BILLING_ENABLED` | `false`. 빌링 통신 활성화 |
+| `payment-service/MEMBERSHIP_API_ENABLED` | `false`. 신규 가입 API |
+| `payment-service/MEMBERSHIP_RENEWAL_ENABLED` | `false`. 정기 청구 생성 |
+| `payment-service/MEMBERSHIP_RECOVERY_ENABLED` | `false`. 발급, 청구, 조회, 키 삭제 작업 실행. 가입을 막아도 UNKNOWN 복구를 위해 따로 켭니다. |
+| `payment-service/MEMBERSHIP_CONSUMER_ENABLED` | `false`. 해지 명령 소비 |
+| `account-service/MEMBERSHIP_CONSUMER_ENABLED` | `false`. 결과 projection 소비와 만료 예정 알림 |
+| `account-service/MEMBERSHIP_API_ENABLED` | `false`. 해지 요청 API |
+| `account-service/MEMBERSHIP_WITHDRAWAL_CHECK_ENABLED` | `false`. 탈퇴 때 Payment 회원제 차단과 종료. Payment 가입 API를 켜기 전에 true여야 합니다. |
+| `notification-service/NOTIFICATION_MEMBERSHIP_CONSUMER_ENABLED` | `false`. 회원제 알림 소비 |
+| `order-command-service/MEMBERSHIP_SHIPPING_ENABLED` | `false`. 회원 배송비 할인. 마지막에 켭니다. |
+
+금액, 약관 버전, redirect 주소(`MEMBERSHIP_AMOUNT`, `MEMBERSHIP_PLAN_VERSION`, `MEMBERSHIP_TERMS_VERSION`, `MEMBERSHIP_SUCCESS_URL`, `MEMBERSHIP_FAIL_URL`)는 코드 기본값(4900원, `monthly-v1`, `recurring-v1`, `https://stockdrop-app.vercel.app/membership/billing/success|fail`)을 쓰므로 넣지 않습니다. redirect는 코드의 허용 목록과 다르면 기동하지 않습니다.
+
+켜는 순서: 토픽 생성(`hosts/kafka/topics.sh`) → Notification 소비 → Account 소비와 탈퇴 연계 → Payment 소비와 복구 → Payment 갱신 → Payment 빌링과 가입 API → Account 해지 API → Order 배송비 할인. 끌 때는 가입 API와 할인부터 끄고 복구는 UNKNOWN이 남지 않을 때까지 유지합니다.
+
 ### gateway, purchase-gateway, eureka
 
 shared 값만 사용합니다. 서비스별로 넣을 값이 없습니다.
