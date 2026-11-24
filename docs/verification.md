@@ -80,3 +80,14 @@ aws elasticache describe-reserved-cache-nodes-offerings --cache-node-type cache.
 3. 사용자가 plan·apply 실행 후 `deploy.ps1` 4개 역할과 `redis-app-user.ps1`, `verify.ps1`.
 4. 전환일에 네임서버 변경과 `enable_https = true`.
 5. k6로 풀 사양·증설 목표값·알람 임계값 조정.
+
+## Core/query 검증 게이트
+
+코드 검증: terraform fmt/validate 및 mock test를 수행하고 query TG 없음, EC2 health, Eureka ENI 없음, 각 서비스 상한과 IAM을 plan으로 확인합니다. 운영 검증은 코드 검사와 별개이며 완료 전에는 통과로 기록하지 않습니다.
+
+1. ASG/LT, AZ, 이미지 release SHA, 설정 버전, ENI 소유자, api/pay ALB healthy 수를 사전 기록합니다.
+2. query가 AZ별 한 대이고 네 서비스가 각 2개 UP인지 두 Eureka에서 확인합니다. 전환 중 기존 general까지 포함하면 각 4개일 수 있습니다.
+3. 각 readiness, 공개 업무 GET, DB/Kafka, JWKS, Toss HTTPS 통신, node:9100, 실제 메모리 상한과 OOM 여부를 확인합니다. 유료 AI 분석과 실제 결제는 실행하지 않습니다. 인증 실패 응답만으로 주문 흐름 검증을 완료했다고 판단하지 않습니다.
+4. general 한 대에서 네 서비스를 drain한 뒤 registry, gateway 선택 목록, 요청 실패 증가, Kafka projection/outbox lag를 확인하고 다음 한 대로 갑니다.
+5. core Eureka는 한 번에 한 대만 재기동하며 peer와 전체 registry 복구 후 다음 노드로 진행합니다. purchase 교체는 pay ALB healthy 2 유지와 주문 흐름을 확인합니다.
+6. Prometheus query metrics/blackbox 및 node pool 라벨, 서비스별 replica와 OOM 경보를 확인한 뒤 CD 동결을 해제합니다.

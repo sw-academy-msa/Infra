@@ -81,6 +81,7 @@ output "eureka_ips" {
 output "asg_names" {
   value = {
     general  = module.general_pool.asg_name
+    query    = module.query_pool.asg_name
     purchase = module.purchase_pool.asg_name
   }
 }

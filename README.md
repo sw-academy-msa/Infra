@@ -8,13 +8,14 @@ STOCKDROP 운영 환경(AWS 서울 리전)을 Terraform으로 관리합니다. �
 | 구성 | 내용 |
 |---|---|
 | 입구 | 공개 ALB 1개. `api.<도메인>` → 일반 Gateway, `pay.<도메인>` → 구매 Gateway. ACM 인증서, Route 53 공개 Zone |
-| 일반 풀 | ASG 1개, 두 AZ, t4g.medium 2대(최대 변수). 서버마다 Gateway·Eureka·Account·Product Query·Order Query·Payment·AI·Notification 8개 |
-| 구매 풀 | ASG 1개, 두 AZ, t4g.small 2대(최대 변수). 서버마다 PurchaseGateway·Order Command·Product Command 3개 |
+| core (general) | ASG 1개, 두 AZ, t4g.medium 2대. Gateway, Eureka, Account, Notification |
+| query | ASG 1개, 두 AZ, t4g.medium 2대. Product Query, Order Query, Payment, AI |
+| 구매 풀 | ASG 1개, 두 AZ, t4g.medium 2대(최대 변수). 서버마다 PurchaseGateway·Order Command·Product Command 3개 |
 | 고정 역할 EC2 | Kafka(t4g.small), Command PostgreSQL(사양 변수), 모니터링(t4g.small). AZ1 app 서브넷, 별도 데이터 EBS |
 | 관리형 | RDS PostgreSQL Single-AZ(변수로 Multi-AZ 전환), ElastiCache Redis(기본 꺼짐), S3 4개, ECR 11개, Kafka 재기동 Lambda, CloudWatch 알람 |
 | 내부 DNS | `stockdrop.internal` Private Zone: `kafka`, `command-db`, `monitoring`, `eureka-a`, `eureka-c` |
 
-기본 정상 상태 EC2는 7대(일반 2 + 구매 2 + 고정 3)이고, 이와 별도로 NAT 인스턴스 1대가 있습니다(아래 "설계와 다른 점").
+기본 정상 상태 EC2는 9대(core 2 + query 2 + 구매 2 + 고정 3)이고, 이와 별도로 NAT 인스턴스 1대가 있습니다(아래 "설계와 다른 점").
 설계도와 리소스의 대응, Eureka 주소 관리 방식 비교는 [docs/architecture.md](docs/architecture.md)에 있습니다.
 
 ## 폴더
@@ -25,7 +26,7 @@ STOCKDROP 운영 환경(AWS 서울 리전)을 Terraform으로 관리합니다. �
 | `envs/prod/` | 운영 환경 루트 모듈. `main.tf`(네트워크·풀), `dns.tf`, `redis.tf`, `alarms.tf`, `tests/` |
 | `modules/network` | VPC, 서브넷 6개, NAT 인스턴스(SSM 전용 역할, 암호화 gp3), 라우팅(data 서브넷은 인터넷 경로 없음), S3 Gateway 엔드포인트 |
 | `modules/security` | 보안 그룹과 규칙. 포트 표는 [docs/network.md](docs/network.md) |
-| `modules/iam` | EC2 역할 5개(general, purchase, command-db, kafka, monitoring) |
+| `modules/iam` | EC2 역할 6개(general, query, purchase, command-db, kafka, monitoring) |
 | `modules/alb` | ALB, 대상 그룹 2개, ACM DNS 검증, `api`·`pay` Alias |
 | `modules/pool` | Launch Template + ASG + CPU 증설 정책 + lifecycle hook, 부팅·배포 스크립트 |
 | `modules/host` | 고정 역할 EC2(고정 사설 IP, 데이터 EBS `/data`, 삭제 방지) |
@@ -119,7 +120,8 @@ cd ..\..
 
 | 레포 | 서비스 | 풀 |
 |---|---|---|
-| AccountService, ProductQueryService, OrderQueryService, PaymentService, AIService, NotificationService, GeneralGateway, Eureka | account-service 등 | general |
+| AccountService, NotificationService, GeneralGateway, Eureka | account-service 등 | general |
+| ProductQueryService, OrderQueryService, PaymentService, AIService | product-query-service 등 | query |
 | ProductCommandService, OrderCommandService, PurchaseGateway | product-command-service 등 | purchase |
 
 - **권한:** 역할은 레포마다 하나예요. 그 레포의 **main 브랜치**에서 실행될 때만 받을 수 있고, 자기 ECR 저장소, 자기 release 태그, 자기 풀 서버에만 접근해요(`envs/prod/cicd.tf`).
@@ -162,7 +164,7 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 
 | 자원 | 대략 |
 |---|---|
-| 일반 풀 t4g.medium 2대 + 구매 풀 t4g.small 2대 + EBS | 95달러 |
+| core·query·구매 풀 t4g.medium 6대 + EBS | 190달러 (분리 전 일반 medium 2대 + 구매 small 2대는 95달러) |
 | Kafka·Command DB·모니터링 t4g.small 3대 + EBS | 50달러 |
 | RDS db.t4g.micro Single-AZ + 20GB | 24달러 |
 | ElastiCache Redis | 0달러 (기본 꺼짐, 켜면 2노드 약 37달러) |
@@ -171,9 +173,23 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 | Route 53 Zone 2개, Secrets Manager, Lambda, CloudWatch 알람 약 50개 | 6달러 |
 | ECR·S3 | 저장량에 따라 |
 
-합계 약 210~220달러입니다(공인 IPv4 요금 포함). 증설 시 서버 수만큼 늘고, 정확한 값은 AWS 요금 계산기로 확인합니다.
+합계 약 305~315달러입니다(공인 IPv4 요금 포함, core/query 분리와 구매 풀 medium 상향 반영). 증설 시 서버 수만큼 늘고, 정확한 값은 AWS 요금 계산기로 확인합니다.
 
 ## 검증
 
 로컬과 CI는 AWS에 접속하지 않습니다: `terraform fmt -check`, `validate`, `test`(mock provider), `tflint`, shellcheck, Lambda 단위 테스트, Compose 검사.
 실제 `plan` 결과는 AWS 자격 증명이 있어야 만들 수 있습니다. 지금까지의 검증 결과는 [docs/verification.md](docs/verification.md)에 있습니다.
+
+## Core/query 풀 분리 (2026-11)
+
+물리 `general`은 core 역할을 유지합니다. ASG, LT, TG, ENI 이름과 Terraform 주소를 바꾸지 않습니다. query는 ALB 대상 그룹 없이 EC2 health를 사용하며 두 AZ에 기본 2대를 둡니다. 아래 값은 목표 구성이고 운영 적용 여부는 작업 보고서로 확인합니다.
+
+| Pool | 사양 및 기본 대수 | 서비스와 컨테이너 한도(MiB) |
+|---|---|---|
+| general (core) | t4g.medium 2 | eureka 384, gateway 384, account-service 512, notification-service 448 |
+| query | t4g.medium 2 | product-query-service 448, order-query-service 448, payment-service 448, ai-service 768 |
+| purchase | t4g.medium 2 | purchase-gateway 384, order-command-service 640, product-command-service 640 |
+
+query 시작 hook은 Gateway가 없어 네 서비스 readiness가 모두 200이어야 CONTINUE합니다. 따라서 query 풀을 처음 만들기 전에 네 서비스의 `release/<서비스>` 값과 ECR 이미지가 있어야 합니다(운영은 이미 있음). 새 환경에서는 CD로 이미지를 먼저 올리거나 `query_min_size`를 0으로 두고 시작합니다. 시작 hook은 25분, Terraform 대기는 30분입니다.
+
+일반 core는 고정 Eureka ENI 때문에 자동 instance refresh를 끕니다. query와 purchase는 min healthy 100%, max healthy 150%로 2대 기준 한 대를 추가한 뒤 한 대씩 교체합니다. [이동과 되돌리기](docs/operations.md#corequery-이동-절차)를 따릅니다.

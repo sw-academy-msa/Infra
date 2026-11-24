@@ -1,5 +1,5 @@
 # EC2 역할별 권한입니다. 장기 AWS 키를 서버에 두지 않고 인스턴스 역할로만 접근하며, AdministratorAccess는 쓰지 않습니다.
-# 역할: general(일반 풀), purchase(구매 풀), command-db, kafka, monitoring.
+# 역할: general(core 풀), query(조회 풀), purchase(구매 풀), command-db, kafka, monitoring.
 # 리소스로 좁힐 수 없는 API(ecr:GetAuthorizationToken, ec2:Describe*)만 "*"를 쓰고, 나머지는 ARN으로 제한합니다.
 variable "name" {
   description = "자원 이름 앞에 붙는 접두사입니다."
@@ -42,6 +42,7 @@ locals {
   parameter  = "${local.arn_prefix}:ssm:${local.region}:${local.account}:parameter${var.parameter_path}"
   roles = {
     general    = "General pool service instances"
+    query      = "Query pool service instances"
     purchase   = "Purchase pool service instances"
     command-db = "Command PostgreSQL instance"
     kafka      = "Kafka broker instance"
@@ -50,6 +51,7 @@ locals {
   # 풀별로 읽고 쓰는 서비스 버킷입니다. 판매자 증빙은 Account(일반), 문의 이미지는 OrderCommand(구매)만 씁니다.
   pool_buckets = {
     general  = ["seller-certificates", "product-images"]
+    query    = ["product-images"]
     purchase = ["product-images", "inquiry-images"]
   }
 }
@@ -84,7 +86,7 @@ resource "aws_iam_instance_profile" "this" {
   role     = each.value.name
 }
 
-# ---------- 서비스 풀(general, purchase) ----------
+# ---------- 서비스 풀(general, query, purchase) ----------
 data "aws_iam_policy_document" "pool" {
   for_each = local.pool_buckets
 
@@ -224,6 +226,8 @@ resource "aws_iam_role_policy" "monitoring" {
 output "instance_profile_names" {
   description = "역할별 EC2 인스턴스 프로필 이름입니다."
   value       = { for k, p in aws_iam_instance_profile.this : k => p.name }
+  # 프로필을 받은 ASG가 서버를 띄우기 전에 런타임 정책과 SSM 권한이 붙어 있어야 부팅 스크립트가 실패하지 않습니다.
+  depends_on = [aws_iam_role_policy.pool, aws_iam_role_policy_attachment.ssm_core]
 }
 
 output "role_arns" {

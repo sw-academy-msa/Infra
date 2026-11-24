@@ -26,10 +26,10 @@ locals {
   # repo_id는 `gh api repos/<조직>/<레포> --jq .id`로 확인합니다.
   deploy_targets = {
     AccountService        = { service = "account-service", pool = "general", repo_id = 1429700003 }
-    ProductQueryService   = { service = "product-query-service", pool = "general", repo_id = 1442004312 }
-    OrderQueryService     = { service = "order-query-service", pool = "general", repo_id = 1446824605 }
-    PaymentService        = { service = "payment-service", pool = "general", repo_id = 1444060449 }
-    AIService             = { service = "ai-service", pool = "general", repo_id = 1450068754 }
+    ProductQueryService   = { service = "product-query-service", pool = "query", repo_id = 1442004312 }
+    OrderQueryService     = { service = "order-query-service", pool = "query", repo_id = 1446824605 }
+    PaymentService        = { service = "payment-service", pool = "query", repo_id = 1444060449 }
+    AIService             = { service = "ai-service", pool = "query", repo_id = 1450068754 }
     NotificationService   = { service = "notification-service", pool = "general", repo_id = 1452173067 }
     GeneralGateway        = { service = "gateway", pool = "general", repo_id = 1433374354 }
     Eureka                = { service = "eureka", pool = "general", repo_id = 1433312560 }

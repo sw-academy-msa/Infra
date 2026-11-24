@@ -100,17 +100,17 @@ variable "monitoring_volume_size" {
 }
 
 variable "general_instance_type" {
-  description = "일반 풀 서버 사양입니다. JVM 8개(Eureka 포함)가 함께 뜹니다."
+  description = "core(general) 풀 서버 사양입니다. JVM 4개(Eureka·Gateway·Account·Notification)가 함께 뜹니다."
   type        = string
   default     = "t4g.medium"
 }
 
 variable "purchase_instance_type" {
   type    = string
-  default = "t4g.small"
+  default = "t4g.medium"
 }
 
-# 증설 상한입니다. 비용이 갑자기 커지지 않도록 기본은 평소 2대 + 일반 1대, 구매 2대까지만 늘립니다.
+# 증설 상한입니다. 비용이 갑자기 커지지 않도록 기본은 평소 2대 + core 1대, query 1대, 구매 2대까지만 늘립니다.
 # 선착순 시작 시각에는 CPU 증설이 늦을 수 있어, 큰 행사 전에는 desired를 미리 올리는 것을 권장합니다(docs/operations.md).
 variable "general_min_size" {
   type    = number
@@ -133,7 +133,7 @@ variable "purchase_max_size" {
 }
 
 variable "cpu_target_percent" {
-  description = "두 풀 공통 CPU 목표값입니다. t4g는 CPU 크레딧을 쓰므로 너무 높게 잡지 않습니다."
+  description = "세 풀 공통 CPU 목표값입니다. t4g는 CPU 크레딧을 쓰므로 너무 높게 잡지 않습니다."
   type        = number
   default     = 60
 }
@@ -142,13 +142,9 @@ variable "cpu_target_percent" {
 variable "general_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
-    { name = "eureka", port = 8761, memory_mb = 256 },
+    { name = "eureka", port = 8761, memory_mb = 384 },
     { name = "gateway", port = 8000, memory_mb = 384 },
     { name = "account-service", port = 8080, memory_mb = 512 },
-    { name = "product-query-service", port = 8082, memory_mb = 448 },
-    { name = "order-query-service", port = 8085, memory_mb = 448 },
-    { name = "payment-service", port = 8084, memory_mb = 448 },
-    { name = "ai-service", port = 8086, memory_mb = 512 },
     { name = "notification-service", port = 8087, memory_mb = 448 },
   ]
 }
@@ -195,4 +191,30 @@ variable "pool_health_check_type" {
   description = "일반·구매 풀의 서버 교체 기준입니다. 앱이 하나도 배포되지 않은 첫 배포 때만 EC2로 두고, Gateway가 ALB 검사를 통과하면 ELB로 되돌립니다."
   type        = string
   default     = "ELB"
+}
+
+variable "query_instance_type" {
+  description = "query 풀 서버 사양입니다. JVM 4개(ProductQuery·OrderQuery·Payment·AI)가 함께 뜹니다."
+  type        = string
+  default     = "t4g.medium"
+}
+
+variable "query_min_size" {
+  type    = number
+  default = 2
+}
+
+variable "query_max_size" {
+  type    = number
+  default = 3
+}
+
+variable "query_services" {
+  type = list(object({ name = string, port = number, memory_mb = number }))
+  default = [
+    { name = "product-query-service", port = 8082, memory_mb = 448 },
+    { name = "order-query-service", port = 8085, memory_mb = 448 },
+    { name = "payment-service", port = 8084, memory_mb = 448 },
+    { name = "ai-service", port = 8086, memory_mb = 768 },
+  ]
 }

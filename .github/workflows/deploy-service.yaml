@@ -15,7 +15,7 @@ on:
         type: string
         required: true
       pool:
-        description: "배포할 서버 풀 (general 또는 purchase)"
+        description: "배포할 서버 풀 (general, query 또는 purchase)"
         type: string
         required: true
       aws_account_id:
@@ -49,7 +49,7 @@ jobs:
     steps:
       - name: Check inputs
         run: |
-          case "$POOL" in general|purchase) ;; *) echo "pool은 general 또는 purchase여야 합니다: $POOL"; exit 1;; esac
+          case "$POOL" in general|query|purchase) ;; *) echo "pool은 general, query 또는 purchase여야 합니다: $POOL"; exit 1;; esac
           [[ "$SERVICE" =~ ^[a-z][a-z0-9-]+$ ]] || { echo "service 이름 형식이 올바르지 않습니다: $SERVICE"; exit 1; }
 
       - name: Checkout
@@ -107,6 +107,9 @@ jobs:
       # 풀 서버에 한 대씩(max-concurrency 1) 배포하고, 한 대라도 실패하면 멈춥니다(max-errors 0).
       - name: Rolling deploy (SSM Run Command)
         if: env.DEPLOY_ENABLED == 'true'
+        env:
+          PREVIOUS: ${{ steps.release.outputs.previous }}
+          RELEASE_NAME: ${{ inputs.parameter_path }}/release/${{ inputs.service }}
         run: |
           command_id=$(aws ssm send-command --region "$REGION" \
             --document-name AWS-RunShellScript \
@@ -137,8 +140,13 @@ jobs:
             --query 'CommandInvocations[].[InstanceId,Status,CommandPlugins[0].Output]' --output text || true
           targets=$(aws ssm list-commands --region "$REGION" --command-id "$command_id" --query 'Commands[0].TargetCount' --output text)
           if [ "$targets" = "0" ]; then
-            echo "::warning::$POOL 풀에 실행 중인 서버가 없습니다. 태그만 바뀌었고, 다음에 뜨는 서버가 이 버전으로 시작합니다."
-            exit 0
+            # 대상이 없으면 release 태그를 이전 값으로 되돌립니다. 그대로 두면 다음에 뜨는 서버가 검증 안 된 버전으로 시작합니다.
+            if [ "$PREVIOUS" != "없음" ] && [ -n "$PREVIOUS" ]; then
+              aws ssm put-parameter --region "$REGION" --name "$RELEASE_NAME" --type String --value "$PREVIOUS" --overwrite >/dev/null
+              echo "release 되돌림: $TAG → $PREVIOUS"
+            fi
+            echo "::error::$POOL 풀의 배포 대상이 0대입니다. 풀 매핑과 서버 상태를 확인하세요."
+            exit 1
           fi
           [ "$status" = "Success" ] || { echo "::error::배포 실패($status). 이전 버전으로 되돌리려면 아래 요약의 롤백 명령을 쓰세요."; exit 1; }
 
