@@ -212,9 +212,9 @@ variable "query_max_size" {
 variable "query_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
-    { name = "product-query-service", port = 8082, memory_mb = 448 },
-    { name = "order-query-service", port = 8085, memory_mb = 448 },
-    { name = "payment-service", port = 8084, memory_mb = 448 },
+    { name = "product-query-service", port = 8082, memory_mb = 512 },
+    { name = "order-query-service", port = 8085, memory_mb = 512 },
+    { name = "payment-service", port = 8084, memory_mb = 512 },
     { name = "ai-service", port = 8086, memory_mb = 768 },
   ]
 }
