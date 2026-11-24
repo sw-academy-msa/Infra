@@ -158,10 +158,11 @@ locals {
 }
 
 resource "aws_launch_template" "this" {
-  name                   = local.full_name
-  image_id               = data.aws_ssm_parameter.al2023_arm64.value
-  instance_type          = var.instance_type
-  user_data              = base64encode(local.user_data)
+  name          = local.full_name
+  image_id      = data.aws_ssm_parameter.al2023_arm64.value
+  instance_type = var.instance_type
+  # 작업 사본이 CRLF여도 서버 스크립트에 CR이 들어가지 않게 제거합니다.
+  user_data              = base64encode(replace(local.user_data, "\r", ""))
   update_default_version = true
 
   iam_instance_profile {
