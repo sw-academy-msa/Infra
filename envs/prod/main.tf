@@ -208,17 +208,19 @@ module "query_pool" {
   instance_profile   = module.iam.instance_profile_names["query"]
   target_group_arns  = []
   health_check_type  = "EC2"
-  # 컨테이너 4개 준비까지 기다리는 시작 hook(최대 15분)보다 길게 둬야 첫 생성이 시간 초과로 tainted 되지 않습니다.
-  wait_for_capacity_timeout = "20m"
-  min_size                  = var.query_min_size
-  desired_capacity          = var.query_min_size
-  max_size                  = var.query_max_size
-  cpu_target_percent        = var.cpu_target_percent
-  services                  = var.query_services
-  region                    = var.region
-  parameter_path            = var.parameter_path
-  registry                  = local.registry
-  eureka_ips                = local.eureka_ips
-  eureka_hosts              = local.eureka_hosts
-  kafka_bootstrap_servers   = local.kafka
+  # 부팅, 이미지 4개 받기와 기동 뒤 readiness를 최대 10분 더 기다리므로 시작 hook을 25분으로 넉넉히 둡니다.
+  # Terraform 대기는 hook보다 길어야 첫 생성이 시간 초과로 tainted 되지 않습니다.
+  launch_hook_timeout_seconds = 1500
+  wait_for_capacity_timeout   = "30m"
+  min_size                    = var.query_min_size
+  desired_capacity            = var.query_min_size
+  max_size                    = var.query_max_size
+  cpu_target_percent          = var.cpu_target_percent
+  services                    = var.query_services
+  region                      = var.region
+  parameter_path              = var.parameter_path
+  registry                    = local.registry
+  eureka_ips                  = local.eureka_ips
+  eureka_hosts                = local.eureka_hosts
+  kafka_bootstrap_servers     = local.kafka
 }

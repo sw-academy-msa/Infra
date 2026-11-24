@@ -15,7 +15,7 @@
 특정 서비스만 다시 배포:
 
 ```powershell
-aws ssm send-command --document-name AWS-RunShellScript --targets Key=tag:Pool,Values=general `
+aws ssm send-command --document-name AWS-RunShellScript --targets Key=tag:Pool,Values=query `
   --parameters 'commands=["/usr/local/bin/stockdrop-deploy payment-service"]'
 ```
 
@@ -24,10 +24,10 @@ aws ssm send-command --document-name AWS-RunShellScript --targets Key=tag:Pool,V
 - 서비스: CD 실행 요약(Actions → 해당 실행 → Summary)에 이전 release 값이 있습니다. 그 값으로 되돌리고 한 대씩 재배포합니다. ECR 태그는 덮어쓸 수 없어 이전 이미지가 그대로 남아 있습니다(최근 20개).
   ```powershell
   aws ssm put-parameter --name /stockdrop/prod/release/payment-service --type String --value <이전 SHA> --overwrite
-  aws ssm send-command --document-name AWS-RunShellScript --targets Key=tag:Project,Values=STOCKDROP Key=tag:Pool,Values=general `
+  aws ssm send-command --document-name AWS-RunShellScript --targets Key=tag:Project,Values=STOCKDROP Key=tag:Pool,Values=query `
     --max-concurrency 1 --max-errors 0 --parameters 'commands=["/usr/local/bin/stockdrop-deploy --wait payment-service"]'
   ```
-- Launch Template: 이전 커밋으로 되돌려 `apply`하면 instance refresh가 다시 교체합니다. 급하면 콘솔에서 진행 중인 refresh를 취소합니다.
+- Launch Template: query와 purchase는 이전 커밋으로 되돌려 `apply`하면 instance refresh가 다시 교체합니다. 급하면 콘솔에서 진행 중인 refresh를 취소합니다. general은 자동 refresh가 꺼져 있어 apply만으로 기존 서버가 바뀌지 않으므로, 아래 "Core/query 이동 절차"의 되돌리기처럼 한 노드씩 복구합니다(Eureka 두 대 동시 교체 금지).
 - Terraform: 상태 버킷은 버전 관리가 켜져 있어 이전 상태 파일을 되살릴 수 있습니다. 상태를 직접 되돌리는 것은 마지막 수단입니다.
 
 ## 서버 수 조정
@@ -120,7 +120,7 @@ Kafka 데이터 EBS도 같은 방식입니다(백업 없음: 조회 모델은 Ou
 
 데이터를 지우는 작업이므로 아래 순서를 지키고, 보호 설정은 해당 단계에서만 풉니다. 무분별한 `-target`을 쓰지 않습니다.
 
-1. **앱 서버 정리**: `general_min_size`/`purchase_min_size`를 0으로 바꿔 apply하거나 ASG desired를 0으로 둡니다. 비용이 가장 큰 부분이고 데이터가 없습니다.
+1. **앱 서버 정리**: `general_min_size`/`query_min_size`/`purchase_min_size`를 0으로 바꿔 apply하거나 세 ASG desired를 0으로 둡니다. 비용이 가장 큰 부분이고 데이터가 없습니다.
 2. **RDS**: `terraform destroy` 시 최종 스냅샷 `stockdrop-prod-general-final`이 남습니다. 먼저 `deletion_protection`을 false로 바꿔 apply해야 지워집니다. 스냅샷은 수동으로 지울 때까지 비용이 듭니다.
 3. **Command DB·Kafka·모니터링 데이터 EBS**: `prevent_destroy`라 destroy가 멈춥니다. 보존하려면 `terraform state rm 'module.host["command-db"].aws_ebs_volume.data'` 등으로 Terraform 관리에서만 빼고 볼륨은 남깁니다. 지우려면 스냅샷을 먼저 만든 뒤 `prevent_destroy`를 풉니다.
 4. **S3 백업·이미지 버킷**: `prevent_destroy`. 보존이 기본입니다. 지우려면 버킷을 비운 뒤(버전 포함) 보호를 풉니다.

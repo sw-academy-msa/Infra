@@ -190,4 +190,6 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 | query | t4g.medium 2 | product-query-service 448, order-query-service 448, payment-service 448, ai-service 768 |
 | purchase | t4g.medium 2 | purchase-gateway 384, order-command-service 640, product-command-service 640 |
 
+query 시작 hook은 Gateway가 없어 네 서비스 readiness가 모두 200이어야 CONTINUE합니다. 따라서 query 풀을 처음 만들기 전에 네 서비스의 `release/<서비스>` 값과 ECR 이미지가 있어야 합니다(운영은 이미 있음). 새 환경에서는 CD로 이미지를 먼저 올리거나 `query_min_size`를 0으로 두고 시작합니다. 시작 hook은 25분, Terraform 대기는 30분입니다.
+
 일반 core는 고정 Eureka ENI 때문에 자동 instance refresh를 끕니다. query와 purchase는 min healthy 100%, max healthy 150%로 2대 기준 한 대를 추가한 뒤 한 대씩 교체합니다. [이동과 되돌리기](docs/operations.md#corequery-이동-절차)를 따릅니다.

@@ -23,19 +23,22 @@ case "${1:-}" in
     deploy_ok="${2:-0}"
     # Gateway가 없는 풀(query)은 ALB 헬스체크가 없어 EC2 상태만으로는 트래픽 투입을 막지 못합니다.
     # 모든 서비스 readiness가 최대 10분 안에 200이어야 CONTINUE하고, 아니면 ABANDON해 서버를 새로 띄웁니다.
+    # 요청마다 5초 제한을 두고, 10분은 요청과 대기 시간을 합친 실제 경과 시간으로 잽니다.
     if [ -z "$GATEWAY_NAME" ]; then
       ready=0
       if [ "$deploy_ok" = 1 ]; then
-        for _ in $(seq 1 60); do
+        deadline=$((SECONDS + 600))
+        while :; do
           ready=1
           for entry in $SERVICES; do
             IFS=: read -r svc port _mem <<< "$entry"
             if ! docker inspect "$svc" >/dev/null 2>&1 ||
-               ! curl -sf -o /dev/null "http://127.0.0.1:$port/actuator/health/readiness"; then
+               ! curl -sf --max-time 5 -o /dev/null "http://127.0.0.1:$port/actuator/health/readiness"; then
               ready=0
             fi
           done
           [ "$ready" = 1 ] && break
+          [ "$SECONDS" -ge "$deadline" ] && break
           sleep 10
         done
       fi
@@ -51,7 +54,7 @@ case "${1:-}" in
     # Gateway 컨테이너가 있을 때만 ALB와 같은 readiness 경로를 최대 10분 확인합니다.
     if [ "$deploy_ok" = 1 ] && docker inspect "$GATEWAY_NAME" >/dev/null 2>&1; then
       for _ in $(seq 1 60); do
-        curl -sf -o /dev/null "http://127.0.0.1:$GATEWAY_PORT/actuator/health/readiness" && { echo "Gateway 준비됨"; break; }
+        curl -sf --max-time 5 -o /dev/null "http://127.0.0.1:$GATEWAY_PORT/actuator/health/readiness" && { echo "Gateway 준비됨"; break; }
         sleep 10
       done
     fi

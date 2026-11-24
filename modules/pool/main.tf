@@ -223,11 +223,11 @@ resource "aws_autoscaling_group" "this" {
     version = aws_launch_template.this.latest_version
   }
 
-  # 시작 hook: 부팅 스크립트가 컨테이너를 띄우고 완료합니다. 응답이 없으면 15분 뒤 실패로 보고 새로 띄웁니다.
+  # 시작 hook: 부팅 스크립트가 컨테이너를 띄우고 완료합니다. 응답이 없으면 제한 시간(기본 15분) 뒤 실패로 보고 새로 띄웁니다.
   initial_lifecycle_hook {
     name                 = "launching"
     lifecycle_transition = "autoscaling:EC2_INSTANCE_LAUNCHING"
-    heartbeat_timeout    = 900
+    heartbeat_timeout    = var.launch_hook_timeout_seconds
     default_result       = "ABANDON"
   }
 
@@ -293,6 +293,12 @@ output "asg_name" {
 
 output "asg_arn" {
   value = aws_autoscaling_group.this.arn
+}
+
+variable "launch_hook_timeout_seconds" {
+  description = "시작 hook 제한 시간(초)입니다. 이미지 받기와 컨테이너 기동, readiness 대기(최대 10분)를 모두 담아야 합니다."
+  type        = number
+  default     = 900
 }
 
 variable "wait_for_capacity_timeout" {
