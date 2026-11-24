@@ -1,6 +1,7 @@
 #!/bin/bash
 # ASG lifecycle hook 처리입니다. Lambda 없이 서버가 IMDS로 자기 상태를 확인하고 직접 완료합니다.
 #   stockdrop-lifecycle launched <0|1>  시작 hook: Gateway 준비를 제한 시간만 기다린 뒤 완료
+#                                       (Gateway 없는 query 풀은 모든 서비스가 준비돼야 CONTINUE, 아니면 ABANDON)
 #   stockdrop-lifecycle watch           종료 hook: 종료 예정이면 컨테이너를 정상 종료(Eureka 등록 해제)한 뒤 완료
 set -uo pipefail
 source /etc/stockdrop/pool.conf
@@ -13,13 +14,40 @@ imds() {
 
 complete() {
   aws autoscaling complete-lifecycle-action --region "$REGION" --auto-scaling-group-name "$ASG_NAME" \
-    --lifecycle-hook-name "$1" --instance-id "$(imds instance-id)" --lifecycle-action-result CONTINUE >/dev/null 2>&1 &&
+    --lifecycle-hook-name "$1" --instance-id "$(imds instance-id)" --lifecycle-action-result "${2:-CONTINUE}" >/dev/null 2>&1 &&
     echo "lifecycle $1 완료" || echo "lifecycle $1 완료 호출 실패(hook 없음 또는 이미 완료)"
 }
 
 case "${1:-}" in
   launched)
     deploy_ok="${2:-0}"
+    # Gateway가 없는 풀(query)은 ALB 헬스체크가 없어 EC2 상태만으로는 트래픽 투입을 막지 못합니다.
+    # 모든 서비스 readiness가 최대 10분 안에 200이어야 CONTINUE하고, 아니면 ABANDON해 서버를 새로 띄웁니다.
+    if [ -z "$GATEWAY_NAME" ]; then
+      ready=0
+      if [ "$deploy_ok" = 1 ]; then
+        for _ in $(seq 1 60); do
+          ready=1
+          for entry in $SERVICES; do
+            IFS=: read -r svc port _mem <<< "$entry"
+            if ! docker inspect "$svc" >/dev/null 2>&1 ||
+               ! curl -sf -o /dev/null "http://127.0.0.1:$port/actuator/health/readiness"; then
+              ready=0
+            fi
+          done
+          [ "$ready" = 1 ] && break
+          sleep 10
+        done
+      fi
+      if [ "$ready" = 1 ]; then
+        complete launching
+      else
+        echo "서비스 준비 실패: 시작 hook을 ABANDON합니다." >&2
+        complete launching ABANDON
+        exit 1
+      fi
+      exit 0
+    fi
     # Gateway 컨테이너가 있을 때만 ALB와 같은 readiness 경로를 최대 10분 확인합니다.
     if [ "$deploy_ok" = 1 ] && docker inspect "$GATEWAY_NAME" >/dev/null 2>&1; then
       for _ in $(seq 1 60); do

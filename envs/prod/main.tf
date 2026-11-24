@@ -139,28 +139,30 @@ resource "aws_route53_record" "eureka" {
   records  = [each.value.ip]
 }
 
-# 일반 풀: 두 AZ에 걸친 ASG 하나입니다. 서버마다 Gateway·Eureka·업무 서비스 6개를 함께 띄웁니다.
+# 일반 풀(논리 core): 두 AZ에 걸친 ASG 하나입니다. 서버마다 Gateway·Eureka·Account·Notification을 함께 띄웁니다.
+# 이름·ASG·LT·대상 그룹·Eureka ENI는 기존 general 그대로 둡니다(재생성 금지).
 module "general_pool" {
-  health_check_type  = var.pool_health_check_type
-  source             = "../../modules/pool"
-  name               = var.name
-  pool               = "general"
-  subnet_ids         = module.network.app_subnet_ids
-  instance_type      = var.general_instance_type
-  security_group_ids = [module.security.app_sg_id]
-  instance_profile   = module.iam.instance_profile_names["general"]
-  target_group_arns  = [module.alb.target_group_arns["general"]]
-  min_size           = var.general_min_size
-  desired_capacity   = var.general_min_size
-  max_size           = var.general_max_size
-  cpu_target_percent = var.cpu_target_percent
-  services           = var.general_services
-  gateway_service    = "gateway"
-  region             = var.region
-  parameter_path     = var.parameter_path
-  registry           = local.registry
-  eureka_ips         = local.eureka_ips
-  eureka_hosts       = local.eureka_hosts
+  automatic_instance_refresh = false # Eureka 고정 ENI 두 개를 지키려고 자동 교체를 끕니다. 교체는 한 대씩 유지보수 절차로 합니다.
+  health_check_type          = var.pool_health_check_type
+  source                     = "../../modules/pool"
+  name                       = var.name
+  pool                       = "general"
+  subnet_ids                 = module.network.app_subnet_ids
+  instance_type              = var.general_instance_type
+  security_group_ids         = [module.security.app_sg_id]
+  instance_profile           = module.iam.instance_profile_names["general"]
+  target_group_arns          = [module.alb.target_group_arns["general"]]
+  min_size                   = var.general_min_size
+  desired_capacity           = var.general_min_size
+  max_size                   = var.general_max_size
+  cpu_target_percent         = var.cpu_target_percent
+  services                   = var.general_services
+  gateway_service            = "gateway"
+  region                     = var.region
+  parameter_path             = var.parameter_path
+  registry                   = local.registry
+  eureka_ips                 = local.eureka_ips
+  eureka_hosts               = local.eureka_hosts
   eureka_enis = [for k, n in local.eureka_nodes : {
     id = aws_network_interface.eureka[k].id
     az = n.az
@@ -192,4 +194,31 @@ module "purchase_pool" {
   eureka_ips              = local.eureka_ips
   eureka_hosts            = local.eureka_hosts
   kafka_bootstrap_servers = local.kafka
+}
+
+# 조회 풀(query): ProductQuery·OrderQuery·Payment·AI를 띄웁니다. ALB 대상 그룹과 Eureka ENI가 없고,
+# Gateway가 Eureka로 찾아 호출합니다. 시작 hook이 네 서비스 readiness를 확인한 뒤에야 InService가 됩니다.
+module "query_pool" {
+  source             = "../../modules/pool"
+  name               = var.name
+  pool               = "query"
+  subnet_ids         = module.network.app_subnet_ids
+  instance_type      = var.query_instance_type
+  security_group_ids = [module.security.app_sg_id]
+  instance_profile   = module.iam.instance_profile_names["query"]
+  target_group_arns  = []
+  health_check_type  = "EC2"
+  # 컨테이너 4개 준비까지 기다리는 시작 hook(최대 15분)보다 길게 둬야 첫 생성이 시간 초과로 tainted 되지 않습니다.
+  wait_for_capacity_timeout = "20m"
+  min_size                  = var.query_min_size
+  desired_capacity          = var.query_min_size
+  max_size                  = var.query_max_size
+  cpu_target_percent        = var.cpu_target_percent
+  services                  = var.query_services
+  region                    = var.region
+  parameter_path            = var.parameter_path
+  registry                  = local.registry
+  eureka_ips                = local.eureka_ips
+  eureka_hosts              = local.eureka_hosts
+  kafka_bootstrap_servers   = local.kafka
 }

@@ -8,7 +8,7 @@
 |---|---|---|
 | 서비스 이미지 | 서비스 레포 develop → main 머지 → CD가 ECR push → `release/<서비스>` 갱신 → 서버 한 대씩 `stockdrop-deploy --wait <서비스>` | 그 서비스만 서버별로 차례로 재시작. 한 대가 준비 실패하면 거기서 멈춤 |
 | 서비스 설정·비밀값 | SSM 값 변경 후 위와 같이 재배포 | 〃 |
-| Launch Template(부팅 스크립트, 사양) | `terraform apply` → ASG instance refresh가 절반씩 교체 | 교체 중 풀 용량 절반. 일반 풀은 Eureka가 잠시 한 대 |
+| Launch Template(부팅 스크립트, 사양) | query/purchase는 min healthy 100%, max healthy 150%로 교체. general 자동 refresh 끔 | general은 고정 ENI 보존을 위한 한 노드씩 유지보수 필요 |
 | 고정 역할 EC2 구성 | `.\hosts\deploy.ps1 -Role <역할>` | Kafka·DB는 컨테이너 재생성 시 수십 초 중단 |
 | Terraform 인프라 | `terraform plan` 검토 → `apply` | plan에 replace·destroy가 있으면 멈추고 원인 확인 |
 
@@ -131,3 +131,18 @@ Kafka 데이터 EBS도 같은 방식입니다(백업 없음: 조회 모델은 Ou
 
 - Route 53 Zone이 이미 있으면 `hosted_zone_id`로 재사용합니다.
 - 같은 이름의 자원(ECR 저장소, S3 버킷 등)이 이미 있으면 새로 만들지 말고 `terraform import`로 가져옵니다. 예: `terraform import 'module.ecr.aws_ecr_repository.this["gateway"]' stockdrop/gateway`. import 전에는 plan에 create가 보이면 apply하지 않습니다.
+
+## Core/query 이동 절차
+
+운영 변경 직전 담당 코디네이터 승인이 필요합니다. 각 plan의 추가/변경/삭제 수와 교체 리소스, 실행 순서, 되돌리기를 보고합니다. CD 동결 중 다른 작업자의 운영 배포도 멈춥니다. desired_capacity는 ignore_changes이므로 변수 변경만으로 운영 대수가 변하지 않을 수 있습니다.
+
+1. 기존 ASG/LT/ENI 소유자와 release/config 버전을 기록하고 CD를 동결합니다. 먼저 query만 생성하는 제한 plan으로 기존 general과 purchase 변경을 제외합니다. query IAM runtime 정책과 SSM attachment를 반드시 포함합니다.
+2. query 2대를 기동하고 같은 release 네 서비스를 확인합니다. 두 AZ, readiness, 두 Eureka의 등록, 업무 GET, DB/Kafka/JWKS/Toss 통신, 메모리를 검사합니다. Prometheus는 전환 중 general과 query 양쪽을 발견합니다. 중복 worker는 기존 DB lease와 Kafka group을 공유해야 합니다.
+3. general의 한 인스턴스에서 query 네 서비스를 OUT_OF_SERVICE로 바꾸고 registry/gateway 반영 및 in-flight 작업 drain 후 compose stop합니다. 다른 인스턴스로 진행하기 전에 요청과 consumer lag를 확인합니다. pool.conf에서 항목을 빼는 것만으로 기존 컨테이너가 종료되지는 않습니다.
+4. 기존 general 2대를 core로 유지합니다. LT와 기존 서버의 서비스 목록을 맞추고 Eureka 상한은 384MiB로 한 대씩 적용합니다. general 자동 refresh는 꺼져 있으므로 apply만으로 기존 서버를 교체하지 않습니다. 기존 ENI를 붙인 채 compose를 한 노드씩 재생성하고 peer/registry 복구를 확인하는 유지보수를 우선합니다. 인스턴스 교체가 필요하면 같은 AZ의 기존 노드를 먼저 종료해 ENI가 해제된 것을 확인한 뒤 새 노드의 ENI 획득 및 Eureka readiness를 검사합니다. 두 Eureka 동시 교체는 금지합니다. 현재 부팅 코드는 ENI 획득 3분 실패 후 자동 재획득하지 않으므로 gateway healthy만 보고 성공 처리하지 않습니다.
+5. 판매 시작 집중 시간을 피하는 승인을 별도로 받고 purchase를 medium으로 올립니다. min healthy 100%, max healthy 150%는 desired=2에서 새 한 대씩 교체하도록 합니다. healthy 두 대와 pay 요청, 주문 흐름을 관측합니다.
+6. query 정상 확인 뒤에만 서비스 deploy.yaml의 query 매핑을 merge commit으로 머지하고 IAM Pool 제한도 맞춥니다. core 네 서비스는 general을 유지하고 purchase 매핑은 그대로입니다. CD의 대상 0대는 실패입니다. 문서와 최종 검증을 남기고 동결을 해제합니다.
+
+### 되돌리기
+
+query 기동 직후에는 query 네 서비스의 등록을 해제하고 drain한 다음 query ASG만 축소/제거합니다. general에서 제거한 후에는 한 대씩 이전 release/config로 네 서비스를 복구하고 readiness/UP 확인 후 query를 제외합니다. 한꺼번에 general로 복구하면 메모리가 다시 부족해질 수 있습니다. core 메모리는 기존 compose와 pool 설정을 백업한 버전으로 한 노드씩 복원하며 ENI는 건드리지 않습니다. LT 번호를 되돌리는 것만으로 기존 인스턴스가 복구되지는 않습니다. purchase는 refresh를 취소하고 이전 LT로 설정한 뒤 동일한 min healthy 기준으로 한 대씩 복구합니다. 운영 DB 데이터나 스키마는 수정하지 않습니다.

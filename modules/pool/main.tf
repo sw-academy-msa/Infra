@@ -5,7 +5,7 @@ variable "name" {
 }
 
 variable "pool" {
-  description = "Pool 태그 값입니다. Prometheus EC2 서비스 탐색이 이 태그로 대상을 찾습니다. 예: general, purchase"
+  description = "Pool 태그 값입니다. Prometheus EC2 서비스 탐색이 이 태그로 대상을 찾습니다. 예: general, query, purchase"
   type        = string
 }
 
@@ -27,7 +27,7 @@ variable "instance_profile" {
 }
 
 variable "target_group_arns" {
-  description = "이 풀의 Gateway를 연결할 ALB 대상 그룹입니다."
+  description = "이 풀의 Gateway를 연결할 ALB 대상 그룹입니다. Gateway가 없는 query 풀은 비워 둡니다."
   type        = list(string)
 }
 
@@ -60,7 +60,9 @@ variable "services" {
 }
 
 variable "gateway_service" {
-  description = "ALB 대상이 되는 Gateway 서비스 이름입니다. 시작 hook이 이 서비스의 readiness를 확인합니다."
+  default     = null
+  nullable    = true
+  description = "ALB 대상이 되는 Gateway 서비스 이름입니다. 시작 hook이 이 서비스의 readiness를 확인합니다. 없으면(null) 모든 서비스의 readiness를 확인합니다."
   type        = string
 }
 
@@ -146,8 +148,8 @@ locals {
     eureka_enis             = join(" ", [for e in var.eureka_enis : "${e.id}:${e.az}:${e.ip}"])
     kafka_bootstrap_servers = var.kafka_bootstrap_servers
     asg_name                = local.full_name
-    gateway_name            = local.gateway.name
-    gateway_port            = local.gateway.port
+    gateway_name            = try(local.gateway.name, "")
+    gateway_port            = try(tostring(local.gateway.port), "")
     compose_version         = var.compose_version
     node_exporter_version   = var.node_exporter_version
     deploy_script           = trimspace(file("${path.module}/stockdrop-deploy.sh"))
@@ -212,6 +214,7 @@ resource "aws_autoscaling_group" "this" {
   health_check_type         = var.health_check_type
   health_check_grace_period = var.health_check_grace_seconds
   default_instance_warmup   = var.health_check_grace_seconds
+  wait_for_capacity_timeout = var.wait_for_capacity_timeout
   # 오래된 Launch Template 서버부터 줄여, 줄일 때 최신 설정 서버가 남게 합니다.
   termination_policies = ["OldestLaunchTemplate", "Default"]
 
@@ -236,13 +239,18 @@ resource "aws_autoscaling_group" "this" {
     default_result       = "CONTINUE"
   }
 
-  # Launch Template이 바뀌면 절반씩 차례로 교체합니다. 같은 설정의 서버는 건너뜁니다.
-  instance_refresh {
-    strategy = "Rolling"
-    preferences {
-      min_healthy_percentage = 50
-      instance_warmup        = var.health_check_grace_seconds
-      skip_matching          = true
+  # Launch Template이 바뀌면 한 대를 먼저 추가로 띄운 뒤 한 대씩 교체합니다(정상 100% 유지, 최대 150%). 같은 설정의 서버는 건너뜁니다.
+  # general은 Eureka ENI 때문에 끕니다(automatic_instance_refresh = false).
+  dynamic "instance_refresh" {
+    for_each = var.automatic_instance_refresh ? [1] : []
+    content {
+      strategy = "Rolling"
+      preferences {
+        min_healthy_percentage = 100
+        max_healthy_percentage = 150
+        instance_warmup        = var.health_check_grace_seconds
+        skip_matching          = true
+      }
     }
   }
 
@@ -285,4 +293,16 @@ output "asg_name" {
 
 output "asg_arn" {
   value = aws_autoscaling_group.this.arn
+}
+
+variable "wait_for_capacity_timeout" {
+  description = "ASG를 만들거나 바꿀 때 Terraform이 InService 서버 수를 기다리는 시간입니다."
+  type        = string
+  default     = "10m"
+}
+
+variable "automatic_instance_refresh" {
+  description = "Launch Template이 바뀔 때 자동 instance refresh 여부입니다. Eureka 고정 ENI가 있는 general은 한 대씩 유지보수 절차로 교체하므로 끕니다."
+  type        = bool
+  default     = true
 }

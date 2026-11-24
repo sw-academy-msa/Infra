@@ -11,7 +11,7 @@
 | S3 Gateway Endpoint | private 라우팅 테이블에 연결 | `modules/network` |
 | 공개 ALB, 대상 그룹 2개 | `aws_lb`, `aws_lb_target_group.general/purchase`, Host 규칙 | `modules/alb` |
 | ACM, Route 53 | 공개 Zone(생성 또는 재사용), DNS 검증, `api`·`pay` Alias | `envs/prod/dns.tf`, `modules/alb` |
-| 일반 업무·조회 ASG | Launch Template + ASG(min 2, max 변수) + CPU 목표 추적 + lifecycle hook | `modules/pool`, `envs/prod/main.tf` |
+| core(general) 및 query ASG | Launch Template + ASG(min 2, max 변수) + CPU 목표 추적 + lifecycle hook | `modules/pool`, `envs/prod/main.tf` |
 | 구매 처리 ASG | 같은 모듈, 구매 서비스 3개 | 〃 |
 | Eureka A/B | AZ별 고정 IP ENI 2개 + 내부 DNS `eureka-a/c` | `envs/prod/main.tf` |
 | Kafka 단일 EC2 | `modules/host` + `hosts/kafka`(KRaft, 토픽 19개, JMX) | `modules/host`, `hosts/kafka` |
@@ -24,9 +24,9 @@
 | EventBridge + Lambda | Kafka stopped 재기동 | `modules/kafka_restart` |
 | CloudWatch | 알람(EC2·ALB·RDS·Redis·Lambda), 로그 그룹 보관 기간, SNS 주제 | `envs/prod/alarms.tf` |
 | 내부 DNS | Private Zone `stockdrop.internal` | `envs/prod/dns.tf` |
-| IAM | EC2 역할 5개 + Lambda 역할 | `modules/iam`, `modules/kafka_restart` |
+| IAM | EC2 역할 6개(general, query, purchase, command-db, kafka, monitoring) + Lambda 역할 | `modules/iam`, `modules/kafka_restart` |
 
-기본 EC2 7대 외에 추가되는 관리형 리소스: NAT 인스턴스 1대(EC2), Lambda 1개, RDS 1대(Single-AZ). Redis는 기본 꺼짐.
+기본 EC2 9대 외에 추가되는 관리형 리소스: NAT 인스턴스 1대(EC2), Lambda 1개, RDS 1대(Single-AZ). Redis는 기본 꺼짐.
 
 ## Eureka 주소 관리
 
@@ -63,3 +63,9 @@ ASG가 서버를 바꾸거나 늘려도 서비스가 Eureka를 찾을 수 있어
 | 이미지·증빙 원본 | S3 | Account, Product Command·Query, AI, Order Command | presigned URL |
 
 Command 원본(product, orders)과 그 Outbox는 RDS에 다시 만들지 않습니다. RDS는 Single-AZ라 AZ 장애 때는 자동 전환되지 않고 스냅샷·시점 복구로 되살립니다(`rds_multi_az=true`로 바꾸면 대기 DB가 생기며, 대기 DB는 읽기 조회에 쓰지 않습니다).
+
+## Core/query 역할 분리
+
+`module.general_pool`과 `Pool=general`은 core의 물리 식별자로 유지합니다. gateway, eureka, account-service, notification-service를 각각 2복제합니다. `module.query_pool`은 query 역할로 product-query-service, order-query-service, payment-service, ai-service를 각각 2복제하고 Eureka 내부 DNS를 공유합니다. payment는 승인과 상태 변경도 담당합니다. 풀 이름은 읽기 전용 권한을 뜻하지 않습니다.
+
+세 풀은 기본 t4g.medium 각각 2대이며 고정 역할 EC2 3대와 합해 9대입니다(NAT 별도). core 한 대의 컨테이너 상한 합은 1728MiB, query는 2112MiB, purchase는 1664MiB입니다. OS/Docker/JVM native 여유와 실제 RSS를 별도로 관측합니다. coupon은 이번 배치에 포함하지 않습니다. query launch hook은 네 서비스 readiness를 모두 확인하고 실패하면 ABANDON합니다.

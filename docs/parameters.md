@@ -210,3 +210,9 @@ shared 값만 사용합니다. 서비스별로 넣을 값이 없습니다.
 | `/stockdrop/prod/monitoring/GRAFANA_PASSWORD` | Grafana `admin` 비밀번호(12자 이상) |
 
 Command DB의 `DB_USERNAME`은 product-command-service가 `product`, order-command-service가 `orders`입니다.
+
+## 풀 및 메모리 변수
+
+`general_services`는 core 네 서비스, `query_services`는 query 네 서비스입니다. Eureka memory_mb=384, AI memory_mb=768이며 나머지 상한은 README 표를 따릅니다. `query_instance_type=t4g.medium`, `query_min_size=2`, `query_max_size=3`, `purchase_instance_type=t4g.medium`입니다. `pool_health_check_type`은 general/purchase에 적용되며 query는 EC2로 고정합니다.
+
+서비스 SSM 경로와 release 경로는 이동 전후 동일합니다. eureka_hosts를 공유하고 query의 eureka_enis는 빈 목록입니다. `ACCOUNT_JWKS_URI`나 Eureka 주소가 localhost 또는 이전 인스턴스 IP를 가리키는 override는 이동 전에 비밀값을 출력하지 않는 검사로 확인합니다. 메모리 변경은 user_data와 LT 버전을 바꾸지만 기존 컨테이너 상한을 바꾸지는 않습니다. general의 automatic_instance_refresh=false이므로 별도 승인한 유지보수가 필요합니다.

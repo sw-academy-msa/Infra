@@ -30,11 +30,11 @@
 | Eureka | 일반 | 8761 | 서비스, 모니터링 | `<ENI IP>:8761`, peer는 상대 ENI |
 | Account | 일반 | 8080 | 서비스(`app_internal_services` 8080~8087), 모니터링 | `<사설 IP>:8080` |
 | Product Command | 구매 | 8081 | 〃 | 8081 |
-| Product Query | 일반 | 8082 | 〃 | 8082 |
+| Product Query | query | 8082 | 〃 | 8082 |
 | Order Command | 구매 | 8083 | 〃 | 8083 |
-| Payment | 일반 | 8084 | 〃 | 8084 |
-| Order Query | 일반 | 8085 | 〃 | 8085 |
-| AI | 일반 | 8086 | 〃 | 8086 |
+| Payment | query | 8084 | 〃 | 8084 |
+| Order Query | query | 8085 | 〃 | 8085 |
+| AI | query | 8086 | 〃 | 8086 |
 | Notification | 일반 | 8087 | 〃 | 8087 |
 | node exporter | 모든 EC2 | 9100 | 모니터링 | - |
 
@@ -78,3 +78,9 @@ PostgreSQL, Redis, Kafka, Eureka, Grafana는 어느 것도 0.0.0.0/0에 열려 �
 | Kafka `apache/kafka:4.1.0`, PostgreSQL `postgres:17-alpine`, Prometheus·Grafana·exporter | Docker Hub·Quay(공개, 고정 버전) | NAT |
 
 공개 이미지는 모두 linux/arm64 manifest가 있는 고정 버전입니다. 서비스 이미지도 CD에서 arm64로 빌드해야 합니다.
+
+## Query 풀 통신
+
+query는 기존 app SG를 공유하며 private app subnet의 AZ a/c에 배치합니다. 새 TG, 공개 IP, 고정 ENI는 없습니다. API ALB는 기존 general TG의 gateway:8000으로만 연결합니다. query의 8082/8085/8084/8086은 기존 app SG 내부 통신과 monitoring SG의 수집 규칙을 사용합니다. node-exporter는 monitoring SG에서 9100으로 수집합니다.
+
+query도 `eureka-a.stockdrop.internal`, `eureka-c.stockdrop.internal`:8761을 사용하며 Account/JWKS:8080, Kafka:9092, RDS:5432와 필요한 외부 HTTPS(Toss 포함)에 접근합니다. Command DB 접근은 purchase SG에만 허용합니다. query 런타임 역할에는 Eureka ENI attach 권한을 부여하지 않습니다. 새 ENI나 DNS 이름을 만들어 Eureka 위치를 바꾸지 않습니다.
