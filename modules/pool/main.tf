@@ -162,7 +162,8 @@ resource "aws_launch_template" "this" {
   image_id      = data.aws_ssm_parameter.al2023_arm64.value
   instance_type = var.instance_type
   # 작업 사본이 CRLF여도 서버 스크립트에 CR이 들어가지 않게 제거합니다.
-  user_data              = base64encode(replace(local.user_data, "\r", ""))
+  # EC2 user_data 한도(16384바이트)를 넘지 않게 gzip으로 압축합니다. cloud-init이 gzip을 알아보고 풀어 실행합니다.
+  user_data              = base64gzip(replace(local.user_data, "\r", ""))
   update_default_version = true
 
   iam_instance_profile {
@@ -202,6 +203,14 @@ resource "aws_launch_template" "this" {
   tag_specifications {
     resource_type = "volume"
     tags          = { Name = local.full_name, Pool = var.pool }
+  }
+
+  lifecycle {
+    # 압축 결과가 16384바이트(base64 21848자)를 넘으면 apply에서 실패하므로 plan 단계에서 막습니다.
+    precondition {
+      condition     = length(base64gzip(replace(local.user_data, "\r", ""))) <= 21848
+      error_message = "압축한 user_data가 EC2 한도 16384바이트를 넘습니다. 부팅 스크립트를 줄이세요."
+    }
   }
 }
 
