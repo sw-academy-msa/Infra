@@ -182,7 +182,7 @@ NAT는 AZ1에 하나만 있습니다. AZ2 서버의 외부 통신도 AZ1을 거�
 
 ## Core/query 풀 분리 (2026-11)
 
-물리 `general`은 core 역할을 유지합니다. ASG, LT, TG, ENI 이름과 Terraform 주소를 바꾸지 않습니다. query는 ALB 대상 그룹 없이 EC2 health를 사용하며 두 AZ에 기본 2대를 둡니다. 아래 값은 목표 구성이고 운영 적용 여부는 작업 보고서로 확인합니다.
+물리 `general`은 core 역할을 유지합니다. ASG, LT, TG, ENI 이름과 Terraform 주소를 바꾸지 않습니다. query는 ALB 대상 그룹 없이 EC2 health를 사용하며 두 AZ에 기본 2대를 둡니다. 아래 구성은 2026-11-24 운영에 적용했습니다(결과는 [docs/verification.md](docs/verification.md#corequery-운영-적용-2026-11-24)).
 
 | Pool | 사양 및 기본 대수 | 서비스와 컨테이너 한도(MiB) |
 |---|---|---|

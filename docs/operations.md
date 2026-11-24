@@ -143,6 +143,13 @@ Kafka 데이터 EBS도 같은 방식입니다(백업 없음: 조회 모델은 Ou
 5. 판매 시작 집중 시간을 피하는 승인을 별도로 받고 purchase를 medium으로 올립니다. min healthy 100%, max healthy 150%는 desired=2에서 새 한 대씩 교체하도록 합니다. healthy 두 대와 pay 요청, 주문 흐름을 관측합니다.
 6. query 정상 확인 뒤에만 서비스 deploy.yaml의 query 매핑을 merge commit으로 머지하고 IAM Pool 제한도 맞춥니다. core 네 서비스는 general을 유지하고 purchase 매핑은 그대로입니다. CD의 대상 0대는 실패입니다. 문서와 최종 검증을 남기고 동결을 해제합니다.
 
+### 실제로 쓴 명령과 주의 (2026-11-24 적용)
+
+- OUT_OF_SERVICE: 두 Eureka에 `curl -X PUT "http://<eureka>:8761/eureka/apps/<APP>/<서비스>:<서비스>-<인스턴스 ID>/status?value=OUT_OF_SERVICE"`. Eureka가 재시작하면 상태가 UP으로 돌아갈 수 있으니 종료 직전에 다시 확인합니다.
+- 서버 안 변경 전 백업: `/etc/stockdrop/backup-20261124-query-split/`(general에서 뺀 compose와 pool.conf), `/etc/stockdrop/backup-20261124-core-mem/`(메모리 조정 전 compose와 pool.conf).
+- RDS(db.t4g.micro)는 연결 여유가 적습니다. 서버 교체로 같은 서비스가 겹치는 동안 다른 서비스 배포를 동시에 하지 않고, CloudWatch DatabaseConnections를 함께 봅니다.
+- user_data는 gzip이고 16384바이트 한도를 plan에서 검사합니다. Windows에서 apply해도 스크립트는 LF로 들어갑니다.
+
 ### 되돌리기
 
 query 기동 직후에는 query 네 서비스의 등록을 해제하고 drain한 다음 query ASG만 축소/제거합니다. general에서 제거한 후에는 한 대씩 이전 release/config로 네 서비스를 복구하고 readiness/UP 확인 후 query를 제외합니다. 한꺼번에 general로 복구하면 메모리가 다시 부족해질 수 있습니다. core 메모리는 기존 compose와 pool 설정을 백업한 버전으로 한 노드씩 복원하며 ENI는 건드리지 않습니다. LT 번호를 되돌리는 것만으로 기존 인스턴스가 복구되지는 않습니다. purchase는 refresh를 취소하고 이전 LT로 설정한 뒤 동일한 min healthy 기준으로 한 대씩 복구합니다. 운영 DB 데이터나 스키마는 수정하지 않습니다.

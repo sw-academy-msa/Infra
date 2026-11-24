@@ -91,3 +91,23 @@ aws elasticache describe-reserved-cache-nodes-offerings --cache-node-type cache.
 4. general 한 대에서 네 서비스를 drain한 뒤 registry, gateway 선택 목록, 요청 실패 증가, Kafka projection/outbox lag를 확인하고 다음 한 대로 갑니다.
 5. core Eureka는 한 번에 한 대만 재기동하며 peer와 전체 registry 복구 후 다음 노드로 진행합니다. purchase 교체는 pay ALB healthy 2 유지와 주문 흐름을 확인합니다.
 6. Prometheus query metrics/blackbox 및 node pool 라벨, 서비스별 replica와 OOM 경보를 확인한 뒤 CD 동결을 해제합니다.
+
+
+## Core/query 운영 적용 (2026-11-24)
+
+| 단계 | 방법 | 결과 |
+|---|---|---|
+| query 생성 | query 전용 제한 apply(추가 7) | 두 AZ 2대, 네 서비스 readiness 200, 두 Eureka UP, 업무 GET 200, Kafka 그룹 합류, Toss와 JWKS 도달 |
+| general drain | 서버 한 대씩 Eureka OUT_OF_SERVICE, 약 2분 대기 후 compose down | 네 서비스는 query만 UP 2, Gateway 5xx 0, Kafka lag 0, RDS 연결 59 → 37 |
+| core 메모리 | 서버 한 대씩 pool.conf와 compose 한도 수정 후 같은 이미지로 재생성 | eureka 384, notification 512, 두 Eureka 등록 22개 일치 |
+| general LT | 제한 apply(변경 2), 자동 refresh 없음 | LT v4, 기존 서버 교체 없음 |
+| CD 역할 | 네 query 서비스 정책 Pool=query | 서비스 deploy.yaml pool: query(develop 머지) |
+| purchase | t4g.medium, rolling refresh 100/150 | pay. readiness 계속 200, TG healthy 항상 2 이상, 5xx 0 |
+| query 메모리 | product-query, order-query, payment 512, rolling refresh | 새 서버 컨테이너 한도 512MiB 확인 |
+
+찾아 고친 문제:
+
+- Windows 작업 사본(core.autocrlf)에서 셸 스크립트가 CRLF로 바뀐 채 user_data에 들어가 `stockdrop-lifecycle`이 실행되지 않았습니다(시작 hook 미완료). `.gitattributes`로 LF 고정, user_data에서 CR 제거.
+- general user_data가 16410바이트로 EC2 한도 16384바이트를 넘어 LT 생성이 실패했습니다. user_data를 gzip으로 넣고 plan 단계 precondition 추가.
+- RDS db.t4g.micro 연결 한도: query 서버가 3대로 겹치고 다른 배포의 컨테이너 교체가 겹치자 `remaining connection slots are reserved`로 서비스 기동과 배포가 실패했습니다. 겹침 중 연결은 약 +12입니다.
+- Eureka 256MiB, notification 448MiB 한도에서 컨테이너 OOM 재시작이 반복되었습니다. 384, 512로 상향.
