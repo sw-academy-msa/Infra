@@ -200,6 +200,8 @@ GA 추천(`AI_GA_ENABLED`, `GA_BIGQUERY_*`)과 개인화(`AI_PERSONALIZATION_ENA
 
 금액, 약관 버전, redirect 주소(`MEMBERSHIP_AMOUNT`, `MEMBERSHIP_PLAN_VERSION`, `MEMBERSHIP_TERMS_VERSION`, `MEMBERSHIP_SUCCESS_URL`, `MEMBERSHIP_FAIL_URL`)는 코드 기본값(4900원, `monthly-v1`, `recurring-v1`, `https://stockdrop-app.vercel.app/membership/billing/success|fail`)을 쓰므로 넣지 않습니다. redirect는 코드의 허용 목록과 다르면 기동하지 않습니다.
 
+전제: 현재 Payment 코드는 test_ 빌링 키만 허용하며 테스트 키 결제는 실제로 청구되지 않습니다. 실결제 계약, live 키 지원 코드 변경, 별도 승인 전에는 운영에서 `MEMBERSHIP_BILLING_ENABLED`와 `MEMBERSHIP_API_ENABLED`를 true로 바꾸지 않습니다. 그 전까지 아래 순서는 격리 환경 시험용입니다.
+
 켜는 순서: 토픽 생성(`hosts/kafka/topics.sh`) → Notification 소비 → Account 소비와 탈퇴 연계 → Payment 소비와 복구 → Payment 갱신 → Payment 빌링과 가입 API → Account 해지 API → Order 배송비 할인. 끌 때는 가입 API와 할인부터 끄고 복구는 UNKNOWN이 남지 않을 때까지 유지합니다.
 
 ### gateway, purchase-gateway, eureka
