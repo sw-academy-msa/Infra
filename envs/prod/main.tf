@@ -10,6 +10,7 @@ locals {
     "payment-service",
     "ai-service",
     "notification-service",
+    "coupon-service",
     "gateway",
     "purchase-gateway",
     "eureka",

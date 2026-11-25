@@ -208,7 +208,9 @@ resource "aws_launch_template" "this" {
   lifecycle {
     # 압축 결과가 16384바이트(base64 21848자)를 넘으면 apply에서 실패하므로 plan 단계에서 막습니다.
     precondition {
-      condition     = length(base64gzip(replace(local.user_data, "\r", ""))) <= 21848
+      condition = (length(base64gzip(replace(local.user_data, "\r", ""))) / 4 * 3 -
+        (endswith(base64gzip(replace(local.user_data, "\r", "")), "==") ? 2 :
+      endswith(base64gzip(replace(local.user_data, "\r", "")), "=") ? 1 : 0)) <= 16384
       error_message = "압축한 user_data가 EC2 한도 16384바이트를 넘습니다. 부팅 스크립트를 줄이세요."
     }
   }

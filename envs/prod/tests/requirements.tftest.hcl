@@ -64,10 +64,10 @@ run "plan" {
     condition     = var.host_instance_types["kafka"] == "t4g.small" && var.host_instance_types["monitoring"] == "t4g.small"
     error_message = "Kafka·모니터링 EC2는 t4g.small이어야 합니다."
   }
-  # core 풀 서비스 4개, query 풀 서비스 4개, 구매 풀 서비스 3개입니다.
+  # core 풀 서비스 5개, query 풀 서비스 4개, 구매 풀 서비스 3개입니다.
   assert {
-    condition     = length(var.general_services) == 4 && length(var.query_services) == 4 && length(var.purchase_services) == 3
-    error_message = "core와 query 컨테이너 각각 4개, 구매 풀 컨테이너 3개여야 합니다."
+    condition     = length(var.general_services) == 5 && length(var.query_services) == 4 && length(var.purchase_services) == 3
+    error_message = "core 5개와 query 4개, 구매 풀 컨테이너 3개여야 합니다."
   }
   assert {
     condition     = module.query_pool.asg_name != "" && var.query_instance_type == "t4g.medium"
@@ -76,6 +76,14 @@ run "plan" {
   assert {
     condition     = one([for s in var.general_services : s.memory_mb if s.name == "eureka"]) == 384 && one([for s in var.query_services : s.memory_mb if s.name == "ai-service"]) == 768
     error_message = "Eureka 메모리 상한은 384MB, AI는 768MB여야 합니다."
+  }
+  assert {
+    condition     = one([for s in var.general_services : s.memory_mb if s.name == "coupon-service"]) == 512 && one([for s in var.general_services : s.port if s.name == "coupon-service"]) == 8088
+    error_message = "CouponService는 general 풀에서 8088 포트와 512MB를 사용해야 합니다."
+  }
+  assert {
+    condition     = local.deploy_targets.CouponService.pool == "general" && local.deploy_targets.CouponService.repo_id == 1471015554 && contains(local.services, "coupon-service")
+    error_message = "쿠폰 ECR과 CD 역할은 확인한 레포 ID 및 general 풀에 연결해야 합니다."
   }
   # 컨테이너 호스트 포트가 풀 안에서 겹치지 않아야 Eureka 등록 포트와 실제 포트가 같게 유지됩니다.
   assert {

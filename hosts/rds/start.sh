@@ -16,7 +16,8 @@ product-query-service:product_query:product_query
 order-query-service:orders_query:orders_query
 payment-service:payment:payment
 ai-service:ai_service:ai
-notification-service:notification_service:notification"
+notification-service:notification_service:notification
+coupon-service:coupon:coupon"
 
 secret_json=$(aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$RDS_SECRET_ARN" \
   --query SecretString --output text)
