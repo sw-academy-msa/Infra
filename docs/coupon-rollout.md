@@ -9,7 +9,7 @@
 3. 승인 뒤 .\hosts\deploy.ps1 -Role kafka로 최신 hosts/kafka/topics.sh를 Kafka 호스트에 올려 그 호스트의 stockdrop-kafka 컨테이너에서 실행합니다. lifecycle 2개, campaign-targets 및 coupon/campaign notifications는 각 3개 파티션이며 각각 같은 파티션 수의 DLT를 둡니다. 회원제 토픽과 DLT는 기존 선언을 재사용합니다. 자동 토픽 생성은 금지합니다.
 4. OrderQuery 할인 전 정산 버전, Payment GA OFF, Notification OFF, Account 서비스 클라이언트 등록 순서로 준비합니다.
 5. CouponService 이미지를 준비하고 general 서버 두 대에 순차 배포합니다. API, consumer, scheduler, outbox 순으로 켭니다. 초기값은 모두 false입니다. Monitoring develop의 coupon 수집 대상 PR도 배포 승인에 포함해야 합니다.
-6. AI 행동 및 lifecycle 소비를 준비한 뒤 OrderCommand lifecycle ON, coupon OFF로 배포합니다. 격리 환경 E2E 후 coupon ON, Gateway coupon ON 및 FE를 반영합니다. GA MP는 동의와 가명 ID 검증 후 별도로 켭니다.
+6. AI 행동 및 lifecycle 소비를 준비한 뒤 OrderCommand lifecycle ON, coupon OFF로 배포합니다. 격리 환경 E2E 후 coupon ON, Gateway coupon과 AI events ON 및 FE를 반영합니다. OrderCommand는 lifecycle Kafka key를 buyerId로 쓰는 버전(OrderCommandService#24 수정 포함)이어야 AI 소비자가 계약 오류로 DLT에 보내지 않습니다. GA MP는 동의와 가명 ID 검증 후 별도로 켭니다.
 
 ## SSM 이름
 
@@ -20,16 +20,19 @@
 - coupon-service/COUPON_CLIENT_SECRET(SecureString), shared/COUPON_SERVICE_SUBJECT, shared/ORDER_SERVICE_SUBJECT
 - coupon-service/COUPON_API_ENABLED, COUPON_CONSUMER_ENABLED, COUPON_SCHEDULER_ENABLED, COUPON_OUTBOX_PUBLISHER_ENABLED: false
 - order-command-service/ORDER_COUPON_ENABLED, ORDER_LIFECYCLE_EVENTS_ENABLED, ORDER_ANALYTICS_ENABLED: false
-- gateway/GATEWAY_COUPON_ENABLED: false
+- gateway/GATEWAY_COUPON_ENABLED, GATEWAY_AI_EVENTS_ENABLED: false (뒤의 것은 FE 행동 이벤트 POST /api/v1/ai/events 연결)
 - payment-service/GA_MEASUREMENT_ID, GA_MP_API_SECRET(SecureString), PAYMENT_GA_MP_ENABLED(false), PAYMENT_CLIENT_SECRET(SecureString)
 - payment-service/PAYMENT_INTERNAL_SCHEME(https 기본), PAYMENT_INTERNAL_ALLOW_PLAIN_HTTP(false 기본): 기존 VPC 평문 통신 배포에서만 운영자가 http 및 true를 명시합니다.
 - coupon-service/MONITORING_COUPON_ENABLED, MONITORING_OUTBOX_ENABLED: 지표 수집용이며 업무 플래그와 별개로 승인 후 켭니다.
-- shared/PAYMENT_SERVICE_SUBJECT, shared/CAMPAIGN_DEMO_ACCOUNT_IDS
+- shared/PAYMENT_SERVICE_SUBJECT, shared/CAMPAIGN_DEMO_ACCOUNT_IDS(쉼표 구분 UUID 최대 10개, AI, Coupon, Notification이 같은 값을 읽음)
+- shared/AI_CAMPAIGN_MODE(OFF): AI 대상 계산과 Notification 시연 야간 예외가 같은 값을 읽으므로 shared에 한 번만 둡니다. OFF, NORMAL, DEMO 중 하나이며 DEMO인데 허용 목록이 비었거나 틀리면 AI는 OFF로 기동합니다.
 - account-service/account.service-auth.clients.coupon-service.subject, secret-hash(SecureString), scopes(account.notifications.read order.coupon.read)
 - account-service/account.service-auth.clients.payment-service.subject, secret-hash(SecureString), scopes(ai.personalization.read)
 - 기존 order-command 클라이언트 scope에 coupon.lock을 추가합니다. 비밀은 기존 값을 그대로 유지합니다.
-- ai-service/AI_BEHAVIOR_EVENTS_ENABLED(false), AI_CAMPAIGN_MODE(OFF)
-- notification-service/NOTIFICATION_COUPON_CONSUMER_ENABLED(false), NOTIFICATION_CAMPAIGN_CONSUMER_ENABLED(false)
+- ai-service/AI_BEHAVIOR_ENABLED(false, 행동 수집 API), AI_BEHAVIOR_LIFECYCLE_ENABLED(false, lifecycle 소비)
+- ai-service/AI_CLIENT_SECRET(SecureString), AI_SERVICE_SUBJECT, AI_CLIENT_SCHEME(https 기본), AI_CLIENT_ALLOW_PLAIN_HTTP(false 기본): 대상 계산 때 Account 마케팅 동의를 조회하는 서비스 토큰용입니다.
+- account-service/account.service-auth.clients.ai-service.subject(AI_SERVICE_SUBJECT와 같은 값), secret-hash(SecureString, AI_CLIENT_SECRET의 BCrypt 해시), scopes(account.notifications.read)
+- notification-service/NOTIFICATION_COUPON_CONSUMER_ENABLED(false): coupon과 campaign 두 알림 토픽 소비와 이미 저장된 광고 작업 발송을 함께 켜고 끕니다. 별도 campaign 플래그는 없습니다.
 
 공유 파라미터는 기존 pool.conf 배포 스크립트에서 각 컨테이너에 주입합니다. 등록은 운영자가 보안 프롬프트나 콘솔에서 합니다. GA API secret은 Measurement Protocol API secrets에서 생성합니다.
 
