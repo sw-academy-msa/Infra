@@ -19,9 +19,11 @@
 - coupon-service/SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE(5), SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE(1)
 - coupon-service/COUPON_CLIENT_SECRET(SecureString), shared/COUPON_SERVICE_SUBJECT, shared/ORDER_SERVICE_SUBJECT
 - coupon-service/COUPON_API_ENABLED, COUPON_CONSUMER_ENABLED, COUPON_SCHEDULER_ENABLED, COUPON_OUTBOX_PUBLISHER_ENABLED: false
-- order-command-service/ORDER_COUPON_ENABLED, ORDER_LIFECYCLE_EVENTS_ENABLED: false
+- order-command-service/ORDER_COUPON_ENABLED, ORDER_LIFECYCLE_EVENTS_ENABLED, ORDER_ANALYTICS_ENABLED: false
 - gateway/GATEWAY_COUPON_ENABLED: false
 - payment-service/GA_MEASUREMENT_ID, GA_MP_API_SECRET(SecureString), PAYMENT_GA_MP_ENABLED(false), PAYMENT_CLIENT_SECRET(SecureString)
+- payment-service/PAYMENT_INTERNAL_SCHEME(https 기본), PAYMENT_INTERNAL_ALLOW_PLAIN_HTTP(false 기본): 기존 VPC 평문 통신 배포에서만 운영자가 http 및 true를 명시합니다.
+- coupon-service/MONITORING_COUPON_ENABLED, MONITORING_OUTBOX_ENABLED: 지표 수집용이며 업무 플래그와 별개로 승인 후 켭니다.
 - shared/PAYMENT_SERVICE_SUBJECT, shared/CAMPAIGN_DEMO_ACCOUNT_IDS
 - account-service/account.service-auth.clients.coupon-service.subject, secret-hash(SecureString), scopes(account.notifications.read order.coupon.read)
 - account-service/account.service-auth.clients.payment-service.subject, secret-hash(SecureString), scopes(ai.personalization.read)
