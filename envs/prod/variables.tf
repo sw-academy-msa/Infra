@@ -138,7 +138,7 @@ variable "cpu_target_percent" {
   default     = 60
 }
 
-# 컨테이너 메모리 상한(MB)입니다. 각 이미지는 이 값의 75%를 JVM 힙으로 씁니다. k6 결과를 보고 조정합니다.
+# 컨테이너 메모리 상한(MB)입니다. 기본 이미지는 75%, CouponService는 50%를 JVM 힙으로 씁니다. k6 결과를 보고 조정합니다.
 variable "general_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
@@ -146,7 +146,7 @@ variable "general_services" {
     { name = "gateway", port = 8000, memory_mb = 384 },
     { name = "account-service", port = 8080, memory_mb = 512 },
     { name = "notification-service", port = 8087, memory_mb = 512 },
-    { name = "coupon-service", port = 8088, memory_mb = 512 },
+    { name = "coupon-service", port = 8088, memory_mb = 768 },
   ]
 }
 
