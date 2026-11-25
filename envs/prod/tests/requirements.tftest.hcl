@@ -78,8 +78,8 @@ run "plan" {
     error_message = "Eureka 메모리 상한은 384MB, AI는 768MB여야 합니다."
   }
   assert {
-    condition     = one([for s in var.general_services : s.memory_mb if s.name == "coupon-service"]) == 512 && one([for s in var.general_services : s.port if s.name == "coupon-service"]) == 8088
-    error_message = "CouponService는 general 풀에서 8088 포트와 512MB를 사용해야 합니다."
+    condition     = one([for s in var.general_services : s.memory_mb if s.name == "coupon-service"]) == 768 && one([for s in var.general_services : s.port if s.name == "coupon-service"]) == 8088
+    error_message = "CouponService는 general 풀에서 8088 포트와 768MB를 사용해야 합니다."
   }
   assert {
     condition     = local.deploy_targets.CouponService.pool == "general" && local.deploy_targets.CouponService.repo_id == 1471015554 && contains(local.services, "coupon-service")
