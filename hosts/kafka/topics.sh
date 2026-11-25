@@ -64,6 +64,14 @@ done
 create stockdrop.notifications.membership.v1 3 retention.ms="$MEMBERSHIP_RETENTION_MS"
 create stockdrop.notifications.membership.v1.DLT 3 retention.ms="$DLT_RETENTION_MS"
 
+# 쿠폰 연동은 16KiB 계약이며 DLT와 유한 재시도 소비자를 사용합니다.
+create stockdrop.orders.lifecycle.v1 2 retention.ms="$MEMBERSHIP_RETENTION_MS"
+create stockdrop.orders.lifecycle.v1.DLT 2 retention.ms="$DLT_RETENTION_MS"
+for t in stockdrop.ai.campaign-targets.v1 stockdrop.notifications.coupon.v1 stockdrop.notifications.campaign.v1; do
+  create "$t" 3 retention.ms="$MEMBERSHIP_RETENTION_MS"
+  create "$t.DLT" 3 retention.ms="$DLT_RETENTION_MS"
+done
+
 echo "--- 현재 토픽"
 docker exec -e KAFKA_OPTS= "$CONTAINER" /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$BOOTSTRAP" --describe \
   | grep -E '^Topic:' | awk '{print $2, $6, $8}' | sort

@@ -146,6 +146,7 @@ variable "general_services" {
     { name = "gateway", port = 8000, memory_mb = 384 },
     { name = "account-service", port = 8080, memory_mb = 512 },
     { name = "notification-service", port = 8087, memory_mb = 512 },
+    { name = "coupon-service", port = 8088, memory_mb = 512 },
   ]
 }
 

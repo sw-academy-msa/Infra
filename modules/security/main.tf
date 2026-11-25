@@ -12,9 +12,9 @@ locals {
     kafka_jmx        = 9404
     postgres_export  = 9187
   }
-  # Account 8080 ~ Notification 8087 업무 서비스 포트입니다.
+  # Account 8080 ~ Coupon 8088 업무 서비스 포트입니다.
   service_from = 8080
-  service_to   = 8087
+  service_to   = 8088
 }
 
 resource "aws_security_group" "alb" {

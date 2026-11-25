@@ -30,6 +30,7 @@ locals {
     OrderQueryService     = { service = "order-query-service", pool = "query", repo_id = 1446824605 }
     PaymentService        = { service = "payment-service", pool = "query", repo_id = 1444060449 }
     AIService             = { service = "ai-service", pool = "query", repo_id = 1450068754 }
+    CouponService         = { service = "coupon-service", pool = "general", repo_id = 1471015554 }
     NotificationService   = { service = "notification-service", pool = "general", repo_id = 1452173067 }
     GeneralGateway        = { service = "gateway", pool = "general", repo_id = 1433374354 }
     Eureka                = { service = "eureka", pool = "general", repo_id = 1433312560 }
