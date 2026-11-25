@@ -178,7 +178,7 @@ GA 추천(`AI_GA_ENABLED`, `GA_BIGQUERY_*`)과 개인화(`AI_PERSONALIZATION_ENA
 | `PUSH_ENCRYPTION_KEY` **S** | 구독 정보 암호화 키 |
 | `WEB_PUSH_ENABLED`, `NOTIFICATION_CONSUMER_ENABLED`, `NOTIFICATION_BUSINESS_CONSUMER_ENABLED`, `NOTIFICATION_PRODUCT_ALERT_ENABLED`, `NOTIFICATION_WORKER_ENABLED` | `true` |
 
-### 회원제 (운영 활성화 승인 전에는 넣지 않음)
+### 회원제 (시연 목적, 테스트 키만)
 
 월 구독 회원제 코드는 모든 플래그가 기본 false라 아래 값이 없어도 기존 기능에 영향이 없습니다. 운영 배포 승인 뒤 사용자가 직접 넣습니다. 비밀값은 화면, 명령 인자, PR, 채팅에 남기지 않고 Console의 Parameter Store 화면에서 SecureString으로 입력합니다. 로컬 `.env`의 키를 재사용하지 않고 운영 전용 새 값을 만듭니다. `put-parameters.ps1`에는 아직 넣지 않았습니다.
 
@@ -200,7 +200,7 @@ GA 추천(`AI_GA_ENABLED`, `GA_BIGQUERY_*`)과 개인화(`AI_PERSONALIZATION_ENA
 
 금액, 약관 버전, redirect 주소(`MEMBERSHIP_AMOUNT`, `MEMBERSHIP_PLAN_VERSION`, `MEMBERSHIP_TERMS_VERSION`, `MEMBERSHIP_SUCCESS_URL`, `MEMBERSHIP_FAIL_URL`)는 코드 기본값(4900원, `monthly-v1`, `recurring-v1`, `https://stockdrop-app.vercel.app/membership/billing/success|fail`)을 쓰므로 넣지 않습니다. redirect는 코드의 허용 목록과 다르면 기동하지 않습니다.
 
-전제: 현재 Payment 코드는 test_ 빌링 키만 허용하며 테스트 키 결제는 실제로 청구되지 않습니다. 실결제 계약, live 키 지원 코드 변경, 별도 승인 전에는 운영에서 `MEMBERSHIP_BILLING_ENABLED`와 `MEMBERSHIP_API_ENABLED`를 true로 바꾸지 않습니다. 그 전까지 아래 순서는 격리 환경 시험용입니다.
+전제: 시연 목적으로 테스트 키(test_)만 허용해 운영에서 켭니다. 현재 Payment 코드는 test_ 빌링 키만 허용하며 테스트 키 결제는 실제로 청구되지 않습니다. 켜기 전에 `TOSS_BILLING_SECRET_KEY`가 test_로 시작하는지 값을 출력하지 않고 확인합니다. 실결제는 계약과 live 키 지원 코드 변경, 별도 승인 뒤에 합니다.
 
 켜는 순서: 토픽 생성(`hosts/kafka/topics.sh`) → Notification 소비 → Account 소비와 탈퇴 연계 → Payment 소비와 복구 → Payment 갱신 → Payment 빌링과 가입 API → Account 해지 API → Order 배송비 할인. 끌 때는 가입 API와 할인부터 끄고 복구는 UNKNOWN이 남지 않을 때까지 유지합니다.
 
