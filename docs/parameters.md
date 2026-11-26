@@ -198,7 +198,7 @@ GA 추천(`AI_GA_ENABLED`, `GA_BIGQUERY_*`)과 개인화(`AI_PERSONALIZATION_ENA
 | `notification-service/NOTIFICATION_MEMBERSHIP_CONSUMER_ENABLED` | `false`. 회원제 알림 소비 |
 | `order-command-service/MEMBERSHIP_SHIPPING_ENABLED` | `false`. 회원 배송비 할인. 마지막에 켭니다. |
 
-금액, 약관 버전, redirect 주소(`MEMBERSHIP_AMOUNT`, `MEMBERSHIP_PLAN_VERSION`, `MEMBERSHIP_TERMS_VERSION`, `MEMBERSHIP_SUCCESS_URL`, `MEMBERSHIP_FAIL_URL`)는 코드 기본값(4900원, `monthly-v1`, `recurring-v1`, `https://stockdrop-app.vercel.app/membership/billing/success|fail`)을 쓰므로 넣지 않습니다. redirect는 코드의 허용 목록과 다르면 기동하지 않습니다.
+금액, 약관 버전, redirect 주소(`MEMBERSHIP_AMOUNT`, `MEMBERSHIP_PLAN_VERSION`, `MEMBERSHIP_TERMS_VERSION`, `MEMBERSHIP_SUCCESS_URL`, `MEMBERSHIP_FAIL_URL`)는 코드 기본값(4900원, `monthly-v1`, `recurring-v1`, `https://stockdrop-app.vercel.app/#/membership/billing/success|fail`, 프론트 HashRouter 경로)을 쓰므로 넣지 않습니다. redirect는 코드의 허용 목록과 다르면 기동하지 않습니다.
 
 전제: 시연 목적으로 테스트 키(test_)만 허용해 운영에서 켭니다. 현재 Payment 코드는 test_ 빌링 키만 허용하며 테스트 키 결제는 실제로 청구되지 않습니다. 켜기 전에 `TOSS_BILLING_SECRET_KEY`가 test_로 시작하는지 값을 출력하지 않고 확인합니다. 실결제는 계약과 live 키 지원 코드 변경, 별도 승인 뒤에 합니다.
 
