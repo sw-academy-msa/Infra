@@ -214,7 +214,7 @@ output "target_group_arn_suffixes" {
   value       = { for k, tg in aws_lb_target_group.this : k => tg.arn_suffix }
 }
 
-# ?? api/pay ???? ???? ???? Grafana SNI ???? ?????.
+# 기존 api/pay 인증서를 유지하고 Grafana SNI 인증서를 추가합니다.
 variable "monitoring_instance_id" {
   type = string
 }
@@ -223,7 +223,7 @@ variable "grafana_allowed_cidrs" {
   default = []
   validation {
     condition     = length(var.grafana_allowed_cidrs) <= 4 && alltrue([for c in var.grafana_allowed_cidrs : can(cidrnetmask(c))])
-    error_message = "IPv4 CIDR? ?? 4? ?????."
+    error_message = "IPv4 CIDR을 최대 4개 지정하세요."
   }
 }
 resource "aws_lb_target_group" "grafana" {

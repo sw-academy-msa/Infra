@@ -74,8 +74,8 @@ run "plan" {
     error_message = "query 풀은 t4g.medium이어야 합니다."
   }
   assert {
-    condition     = one([for s in var.general_services : s.memory_mb if s.name == "eureka"]) == 384 && one([for s in var.query_services : s.memory_mb if s.name == "ai-service"]) == 768
-    error_message = "Eureka 메모리 상한은 384MB, AI는 768MB여야 합니다."
+    condition     = one([for s in var.general_services : s.memory_mb if s.name == "eureka"]) == 512 && one([for s in var.query_services : s.memory_mb if s.name == "ai-service"]) == 768
+    error_message = "Eureka 메모리 상한은 512MB, AI는 768MB여야 합니다."
   }
   assert {
     condition     = one([for s in var.general_services : s.memory_mb if s.name == "coupon-service"]) == 768 && one([for s in var.general_services : s.port if s.name == "coupon-service"]) == 8088
