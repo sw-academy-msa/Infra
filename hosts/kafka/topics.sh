@@ -60,6 +60,12 @@ for t in \
   create "$t.DLT" 2 retention.ms="$DLT_RETENTION_MS"
 done
 
+# 광고 결제 명령과 결과는 금융 대사를 위해 90일 보관합니다.
+for t in product.advertising.commands.v1 payment.advertising.results.v1; do
+  create "$t" 2 retention.ms="$MEMBERSHIP_RETENTION_MS"
+  create "$t.DLT" 2 retention.ms="$DLT_RETENTION_MS"
+done
+
 # 회원제 알림은 다른 알림 토픽과 같은 3개 파티션이며 Notification 전용 소비자가 DLT를 씁니다.
 create stockdrop.notifications.membership.v1 3 retention.ms="$MEMBERSHIP_RETENTION_MS"
 create stockdrop.notifications.membership.v1.DLT 3 retention.ms="$DLT_RETENTION_MS"
