@@ -213,3 +213,94 @@ output "target_group_arn_suffixes" {
   description = "CloudWatch 대상 그룹 지표의 TargetGroup 차원 값입니다."
   value       = { for k, tg in aws_lb_target_group.this : k => tg.arn_suffix }
 }
+
+# ?? api/pay ???? ???? ???? Grafana SNI ???? ?????.
+variable "monitoring_instance_id" {
+  type = string
+}
+variable "grafana_allowed_cidrs" {
+  type    = list(string)
+  default = []
+  validation {
+    condition     = length(var.grafana_allowed_cidrs) <= 4 && alltrue([for c in var.grafana_allowed_cidrs : can(cidrnetmask(c))])
+    error_message = "IPv4 CIDR? ?? 4? ?????."
+  }
+}
+resource "aws_lb_target_group" "grafana" {
+  name                 = "${var.name}-grafana"
+  port                 = 3001
+  protocol             = "HTTP"
+  vpc_id               = var.vpc_id
+  target_type          = "instance"
+  deregistration_delay = 30
+  health_check {
+    path                = "/api/health"
+    matcher             = "200"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+resource "aws_lb_target_group_attachment" "grafana" {
+  target_group_arn = aws_lb_target_group.grafana.arn
+  target_id        = var.monitoring_instance_id
+  port             = 3001
+}
+resource "aws_acm_certificate" "grafana" {
+  domain_name       = "grafana.${var.domain_name}"
+  validation_method = "DNS"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+resource "aws_route53_record" "grafana_validation" {
+  zone_id = var.zone_id
+  name    = one([for o in aws_acm_certificate.grafana.domain_validation_options : o.resource_record_name])
+  type    = one([for o in aws_acm_certificate.grafana.domain_validation_options : o.resource_record_type])
+  records = [one([for o in aws_acm_certificate.grafana.domain_validation_options : o.resource_record_value])]
+  ttl     = 300
+}
+resource "aws_acm_certificate_validation" "grafana" {
+  count                   = var.enable_https ? 1 : 0
+  certificate_arn         = aws_acm_certificate.grafana.arn
+  validation_record_fqdns = [aws_route53_record.grafana_validation.fqdn]
+}
+resource "aws_lb_listener_certificate" "grafana" {
+  count           = var.enable_https ? 1 : 0
+  listener_arn    = aws_lb_listener.https[0].arn
+  certificate_arn = aws_acm_certificate_validation.grafana[0].certificate_arn
+}
+resource "aws_route53_record" "grafana" {
+  zone_id = var.zone_id
+  name    = "grafana.${var.domain_name}"
+  type    = "A"
+  alias {
+    name                   = aws_lb.this.dns_name
+    zone_id                = aws_lb.this.zone_id
+    evaluate_target_health = true
+  }
+}
+resource "aws_lb_listener_rule" "grafana" {
+  count        = var.enable_https ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 30
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.grafana.arn
+  }
+  condition {
+    host_header {
+      values = ["grafana.${var.domain_name}"]
+    }
+  }
+  dynamic "condition" {
+    for_each = length(var.grafana_allowed_cidrs) == 0 ? [] : [var.grafana_allowed_cidrs]
+    content {
+      source_ip {
+        values = condition.value
+      }
+    }
+  }
+  depends_on = [aws_lb_listener_certificate.grafana]
+}

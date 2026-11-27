@@ -90,14 +90,16 @@ module "host" {
 }
 
 module "alb" {
-  source            = "../../modules/alb"
-  name              = var.name
-  vpc_id            = module.network.vpc_id
-  subnet_ids        = module.network.public_subnet_ids
-  security_group_id = module.security.alb_sg_id
-  domain_name       = var.domain_name
-  zone_id           = local.public_zone_id
-  enable_https      = var.enable_https
+  source                 = "../../modules/alb"
+  name                   = var.name
+  vpc_id                 = module.network.vpc_id
+  subnet_ids             = module.network.public_subnet_ids
+  security_group_id      = module.security.alb_sg_id
+  domain_name            = var.domain_name
+  zone_id                = local.public_zone_id
+  enable_https           = var.enable_https
+  monitoring_instance_id = module.host["monitoring"].instance_id
+  grafana_allowed_cidrs  = var.grafana_allowed_cidrs
 }
 
 

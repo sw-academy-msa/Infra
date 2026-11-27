@@ -261,3 +261,21 @@ resource "aws_vpc_security_group_egress_rule" "monitoring_out" {
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
+
+resource "aws_vpc_security_group_ingress_rule" "grafana_from_alb" {
+  security_group_id            = aws_security_group.monitoring.id
+  referenced_security_group_id = aws_security_group.alb.id
+  description                  = "Grafana ALB path only"
+  ip_protocol                  = "tcp"
+  from_port                    = 3001
+  to_port                      = 3001
+}
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_grafana" {
+  security_group_id            = aws_security_group.alb.id
+  referenced_security_group_id = aws_security_group.monitoring.id
+  description                  = "Grafana ALB path only"
+  ip_protocol                  = "tcp"
+  from_port                    = 3001
+  to_port                      = 3001
+}

@@ -219,3 +219,9 @@ variable "query_services" {
     { name = "ai-service", port = 8086, memory_mb = 768 },
   ]
 }
+
+variable "grafana_allowed_cidrs" {
+  description = "Grafana ALB ??? ??? IPv4 ?????. ? ??? ?? ?????."
+  type        = list(string)
+  default     = []
+}
