@@ -222,8 +222,8 @@ variable "grafana_allowed_cidrs" {
   type    = list(string)
   default = []
   validation {
-    condition     = length(var.grafana_allowed_cidrs) <= 4 && alltrue([for c in var.grafana_allowed_cidrs : can(cidrnetmask(c))])
-    error_message = "IPv4 CIDR을 최대 4개 지정하세요."
+    condition     = length(var.grafana_allowed_cidrs) <= 3 && alltrue([for c in var.grafana_allowed_cidrs : can(cidrnetmask(c))])
+    error_message = "IPv4 CIDR을 최대 3개 지정하세요."
   }
 }
 resource "aws_lb_target_group" "grafana" {
