@@ -142,10 +142,10 @@ variable "cpu_target_percent" {
 variable "general_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
-    { name = "eureka", port = 8761, memory_mb = 384 },
-    { name = "gateway", port = 8000, memory_mb = 384 },
-    { name = "account-service", port = 8080, memory_mb = 512 },
-    { name = "notification-service", port = 8087, memory_mb = 512 },
+    { name = "eureka", port = 8761, memory_mb = 512 },
+    { name = "gateway", port = 8000, memory_mb = 512 },
+    { name = "account-service", port = 8080, memory_mb = 640 },
+    { name = "notification-service", port = 8087, memory_mb = 640 },
     { name = "coupon-service", port = 8088, memory_mb = 768 },
   ]
 }
@@ -154,8 +154,8 @@ variable "purchase_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
     { name = "purchase-gateway", port = 8001, memory_mb = 384 },
-    { name = "order-command-service", port = 8083, memory_mb = 640 },
-    { name = "product-command-service", port = 8081, memory_mb = 640 },
+    { name = "order-command-service", port = 8083, memory_mb = 768 },
+    { name = "product-command-service", port = 8081, memory_mb = 768 },
   ]
 }
 
@@ -213,15 +213,15 @@ variable "query_max_size" {
 variable "query_services" {
   type = list(object({ name = string, port = number, memory_mb = number }))
   default = [
-    { name = "product-query-service", port = 8082, memory_mb = 512 },
-    { name = "order-query-service", port = 8085, memory_mb = 512 },
-    { name = "payment-service", port = 8084, memory_mb = 512 },
+    { name = "product-query-service", port = 8082, memory_mb = 640 },
+    { name = "order-query-service", port = 8085, memory_mb = 640 },
+    { name = "payment-service", port = 8084, memory_mb = 640 },
     { name = "ai-service", port = 8086, memory_mb = 768 },
   ]
 }
 
 variable "grafana_allowed_cidrs" {
-  description = "Grafana ALB ??? ??? IPv4 ?????. ? ??? ?? ?????."
+  description = "Grafana ALB 규칙의 선택적 IPv4 제한입니다. 빈 목록은 전체 허용입니다."
   type        = list(string)
   default     = []
 }
